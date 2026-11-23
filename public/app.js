@@ -40,7 +40,7 @@
   let controller = null;
   let stickBottom = true;
 
-  let settings = { name: 'IA', persona: '', model: 'gemini-2.5-flash' };
+  let settings = { name: 'Arena', persona: '', model: 'gemini-2.5-flash' };
   try {
     settings = { ...settings, ...(JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}') || {}) };
   } catch {
@@ -765,7 +765,7 @@
     });
 
     $('#settingsReset').addEventListener('click', () => {
-      settings = { name: 'IA', persona: '', model: 'gemini-2.5-flash' };
+      settings = { name: 'Arena', persona: '', model: 'gemini-2.5-flash' };
       try {
         localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
       } catch {

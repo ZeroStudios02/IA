@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#08090d" />
+  <meta name="description" content="IA — Tu asistente de inteligencia artificial personal, con identidad propia y motor Gemini." />
+  <title>Arena · Tu asistente de IA</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236c8cff'/%3E%3Cstop offset='1' stop-color='%23b06bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='url(%23g)'/%3E%3Cpath d='M50 18 L58 42 L82 50 L58 58 L50 82 L42 58 L18 50 L42 42 Z' fill='white'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ==================== SIDEBAR ==================== -->
+    <aside class="sidebar" id="sidebar" aria-label="Conversaciones">
+      <div class="sidebar-top">
+        <div class="logo">
+          <span class="logo-mark" aria-hidden="true">✦</span>
+          <span class="logo-name">Arena</span>
+        </div>
+        <button class="icon-btn sidebar-close" id="sidebarClose" type="button" title="Cerrar menú" aria-label="Cerrar menú">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <button class="new-chat" id="newChatBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <span>Nueva conversación</span>
+      </button>
+
+      <nav class="conv-list" id="convList" aria-label="Historial de conversaciones"></nav>
+
+      <div class="sidebar-foot">
+        <div class="mode-chip" id="modeChip" title="Estado del servidor">
+          <span class="dot"></span>
+          <span id="modeText">Conectando…</span>
+        </div>
+        <button class="settings-btn" id="settingsBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Personalizar IA</span>
+        </button>
+        <p class="foot-note" id="footNote">Arena · Tu asistente personal</p>
+      </div>
+    </aside>
+
+    <div class="backdrop" id="backdrop"></div>
+
+    <!-- ==================== CHAT ==================== -->
+    <main class="chat">
+      <header class="chat-header">
+        <button class="icon-btn menu-btn" id="menuBtn" type="button" title="Menú" aria-label="Abrir menú">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+        <div class="chat-heading">
+          <h1 id="chatTitle">Nueva conversación</h1>
+        </div>
+      </header>
+
+      <div class="messages" id="messages" aria-live="polite"></div>
+
+      <div class="composer-wrap">
+        <div class="composer" id="composer">
+          <textarea id="input" rows="1" placeholder="Pregúntale lo que quieras a Arena…" autocomplete="off" aria-label="Escribe tu mensaje"></textarea>
+          <button class="send-btn stop" id="stopBtn" type="button" title="Detener generación" aria-label="Detener generación" hidden>
+            <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>
+          </button>
+          <button class="send-btn" id="sendBtn" type="button" title="Enviar" aria-label="Enviar mensaje">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
+          </button>
+        </div>
+        <p class="disclaimer">Tu IA puede cometer errores. Verifica la información importante.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- ==================== AJUSTES ==================== -->
+  <div class="modal-backdrop" id="settingsModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modal-head">
+        <h2 id="settingsTitle">Personaliza tu IA</h2>
+        <button class="icon-btn" id="settingsClose" type="button" title="Cerrar" aria-label="Cerrar ajustes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>Nombre de tu IA</span>
+          <input id="setName" type="text" maxlength="24" placeholder="Arena" />
+        </label>
+        <label class="field">
+          <span>Modelo</span>
+          <select id="setModel">
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash · rápido</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro · avanzado</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash · equilibrado</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Personalidad · instrucción de sistema</span>
+          <textarea id="setPersona" rows="6" placeholder="Eres una IA útil, amable y directa. Respondes en español con claridad…"></textarea>
+        </label>
+        <p class="field-hint">Define aquí cómo es tu IA: su tono, su forma de hablar, su rol. Se usará como instrucción de sistema en cada respuesta.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="settingsReset" type="button">Restaurar</button>
+        <button class="btn-primary" id="settingsSave" type="button">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

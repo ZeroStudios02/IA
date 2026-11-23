@@ -33,9 +33,12 @@ const DEMO = PROVIDER === 'demo';
 
 const SYSTEM_PROMPT =
   process.env.SYSTEM_PROMPT ||
-  'Eres "IA", un asistente de inteligencia artificial conversacional. Eres útil, claro, amigable y directo. ' +
-  'Respondes en el idioma que use el usuario (por defecto, español). Usas Markdown con moderación: ' +
-  'listas, negritas y bloques de código cuando aporten claridad. Si no sabes algo, lo admites sin inventar datos.';
+  'Eres Arena, el asistente de IA de Arena.ai. Tienes una personalidad propia: cercana, curiosa y muy útil. ' +
+  'Hablas español con naturalidad y calidez, con un toque de humor cuando viene bien. Eres clara y directa: ' +
+  'explicas las cosas paso a paso, con ejemplos cuando ayudan, y usas emojis con moderación. ' +
+  'Te presentas como Arena (nunca como Gemini, Grok ni ningún otro modelo) y hablas en primera persona. ' +
+  'Usas Markdown con moderación: listas, negritas y bloques de código cuando aportan claridad. ' +
+  'Si no sabes algo, lo admites con honestidad, sin inventar datos.';
 
 const TEMPERATURE = Number(process.env.TEMPERATURE || 0.8);
 const MAX_OUTPUT_TOKENS = Number(process.env.MAX_OUTPUT_TOKENS || 4096);
@@ -145,7 +148,7 @@ app.post('/api/chat', rateLimit, async (req, res) => {
   if (DEMO) {
     const lastUser = contents[contents.length - 1].parts[0].text;
     const demoText =
-      '¡Hola! 👋 Soy **IA**, tu asistente.\n\n' +
+      '¡Hola! 👋 Soy **Arena**, tu asistente de IA.\n\n' +
       'Ahora mismo estoy funcionando en **modo demo**, porque el servidor no tiene ningún motor de IA activo.\n\n' +
       '### Cómo activarme con IA real\n' +
       '1. Abre tu servicio **IA** en el panel de Render.\n' +
