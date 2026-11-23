@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#08090d" />
+  <meta name="description" content="IA — Tu asistente de inteligencia artificial personal, impulsado por Google Gemini." />
+  <title>IA · Tu asistente de IA</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236c8cff'/%3E%3Cstop offset='1' stop-color='%23b06bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='url(%23g)'/%3E%3Cpath d='M50 18 L58 42 L82 50 L58 58 L50 82 L42 58 L18 50 L42 42 Z' fill='white'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ==================== SIDEBAR ==================== -->
+    <aside class="sidebar" id="sidebar" aria-label="Conversaciones">
+      <div class="sidebar-top">
+        <div class="logo">
+          <span class="logo-mark" aria-hidden="true">✦</span>
+          <span class="logo-name">IA</span>
+        </div>
+        <button class="icon-btn sidebar-close" id="sidebarClose" type="button" title="Cerrar menú" aria-label="Cerrar menú">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <button class="new-chat" id="newChatBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <span>Nueva conversación</span>
+      </button>
+
+      <nav class="conv-list" id="convList" aria-label="Historial de conversaciones"></nav>
+
+      <div class="sidebar-foot">
+        <div class="mode-chip" id="modeChip" title="Estado del servidor">
+          <span class="dot"></span>
+          <span id="modeText">Conectando…</span>
+        </div>
+        <p class="foot-note">IA · Tu asistente personal</p>
+      </div>
+    </aside>
+
+    <div class="backdrop" id="backdrop"></div>
+
+    <!-- ==================== CHAT ==================== -->
+    <main class="chat">
+      <header class="chat-header">
+        <button class="icon-btn menu-btn" id="menuBtn" type="button" title="Menú" aria-label="Abrir menú">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+        <div class="chat-heading">
+          <h1 id="chatTitle">Nueva conversación</h1>
+        </div>
+      </header>
+
+      <div class="messages" id="messages" aria-live="polite"></div>
+
+      <div class="composer-wrap">
+        <div class="composer" id="composer">
+          <textarea id="input" rows="1" placeholder="Pregúntale lo que quieras a IA…" autocomplete="off" aria-label="Escribe tu mensaje"></textarea>
+          <button class="send-btn stop" id="stopBtn" type="button" title="Detener generación" aria-label="Detener generación" hidden>
+            <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>
+          </button>
+          <button class="send-btn" id="sendBtn" type="button" title="Enviar" aria-label="Enviar mensaje">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
+          </button>
+        </div>
+        <p class="disclaimer">IA puede cometer errores. Verifica la información importante.</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
