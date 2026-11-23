@@ -15,6 +15,7 @@ Aplicación web completa tipo **Grok / Gemini**: un chat de inteligencia artific
 - 🧩 Renderizado de **Markdown** propio (código, listas, tablas, citas…)
 - 🔒 La API key vive **solo en el servidor**: nunca llega al navegador
 - 🧪 **Modo demo** automático si no hay API key (para probar la web)
+- 🎭 **IA personalizada**: nombre, personalidad (instrucción de sistema) y modelo configurables desde la interfaz
 - 🚦 Rate limit básico por IP para evitar abusos
 
 ---
@@ -45,6 +46,17 @@ ia/
 ```
 
 ---
+
+## 🎭 Personaliza tu IA
+
+Desde la barra lateral → **Personalizar IA** puedes definir, sin tocar código:
+
+- **Nombre** de tu asistente (aparece en el logo, la bienvenida y el título)
+- **Personalidad**: instrucción de sistema que define tono, estilo y rol
+- **Modelo**: Gemini 2.5 Flash, 2.5 Pro o 2.0 Flash
+
+Los ajustes se guardan en el navegador y se envían al servidor en cada mensaje,
+que los aplica como instrucción de sistema. ✨
 
 ## 🔑 Obtener tu API key de Gemini (gratis)
 
