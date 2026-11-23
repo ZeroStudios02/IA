@@ -30,6 +30,7 @@
     { icon: '💡', label: 'Explícame algo fácil', prompt: 'Explícame la fotosíntesis como si tuviera 10 años.' },
     { icon: '👨‍💻', label: 'Ayúdame con código', prompt: 'Créame una página web sencilla con HTML y CSS para una cafetería.' },
     { icon: '🗺️', label: 'Plan de viaje', prompt: 'Hazme un plan de viaje de 3 días por Granada, en España.' },
+    { icon: '📰', label: 'Noticias de hoy', prompt: 'Dame un resumen de las noticias más importantes de hoy en el mundo.' },
   ];
 
   /* -------------------------------- Estado -------------------------------- */
@@ -45,6 +46,13 @@
     settings = { ...settings, ...(JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}') || {}) };
   } catch {
     /* valores por defecto */
+  }
+
+  let webSearch = true;
+  try {
+    webSearch = localStorage.getItem('ia.web.v1') !== '0';
+  } catch {
+    /* activada por defecto */
   }
 
   try {
@@ -354,6 +362,7 @@
     el.innerHTML = `
       <div class="avatar" aria-hidden="true">✦</div>
       <div class="msg-body">
+        ${msg.searched ? '<div class="search-chip">🔍 Búsqueda en tiempo real</div>' : ''}
         <div class="msg-content md"></div>
       </div>`;
     $('.msg-content', el).innerHTML = mdToHtml(msg.content);
@@ -516,6 +525,7 @@
           messages: conv.messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
           persona: settings.persona,
           model: settings.model,
+          search: webSearch,
         }),
         signal: abortController.signal,
       });
@@ -558,6 +568,16 @@
             }
 
             if (event.error) throw new Error(event.error);
+
+            if (event.searched) {
+              assistant.searched = true;
+              if (!stream.searchChip) {
+                stream.searchChip = document.createElement('div');
+                stream.searchChip.className = 'search-chip';
+                stream.searchChip.textContent = '🔍 Búsqueda en tiempo real';
+                stream.bodyEl.insertBefore(stream.searchChip, stream.contentEl);
+              }
+            }
 
             if (event.delta) {
               assistant.content += event.delta;
@@ -703,7 +723,11 @@
     });
 
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeSidebarMobile();
+      if (event.key === 'Escape') {
+        closeSidebarMobile();
+        $('#settingsModal').hidden = true;
+        $('#newsModal').hidden = true;
+      }
     });
 
     // Delegación: botones de copiar, regenerar y chips de sugerencias
@@ -729,6 +753,100 @@
 
       const chip = event.target.closest('.chip');
       if (chip && chip.dataset.prompt) send(chip.dataset.prompt);
+    });
+
+    // Búsqueda web: activar/desactivar
+    const webBtn = $('#webBtn');
+    const setWebActive = (on) => {
+      webSearch = on;
+      webBtn.classList.toggle('active', on);
+      webBtn.title = on ? 'Búsqueda web activada' : 'Búsqueda web desactivada';
+      try {
+        localStorage.setItem('ia.web.v1', on ? '1' : '0');
+      } catch {
+        /* sin almacenamiento */
+      }
+    };
+    webBtn.addEventListener('click', () => setWebActive(!webSearch));
+    setWebActive(webSearch);
+
+    // Noticias de hoy
+    const newsModal = $('#newsModal');
+    let newsLoaded = false;
+
+    const loadNews = async () => {
+      const list = $('#newsList');
+      const meta = $('#newsMeta');
+      if (newsLoaded) return;
+
+      list.innerHTML = '<p class="news-empty">Cargando titulares…</p>';
+      meta.textContent = '';
+
+      try {
+        const response = await fetch('/api/news', { cache: 'no-store' });
+        const data = await response.json();
+        list.innerHTML = '';
+
+        if (!data.ok || !data.items || !data.items.length) {
+          list.innerHTML = '<p class="news-empty">No se pudieron cargar las noticias. Inténtalo de nuevo.</p>';
+          return;
+        }
+
+        const bySource = new Map();
+        for (const item of data.items) {
+          if (!bySource.has(item.source)) bySource.set(item.source, []);
+          bySource.get(item.source).push(item);
+        }
+
+        for (const [source, items] of bySource) {
+          const group = document.createElement('section');
+          group.className = 'news-group';
+          group.innerHTML = '<h3></h3>';
+          group.querySelector('h3').textContent = source;
+
+          const wrap = document.createElement('div');
+          wrap.className = 'news-items';
+
+          for (const item of items.slice(0, 5)) {
+            const link = document.createElement('a');
+            link.className = 'news-item';
+            link.href = item.link;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.innerHTML = '<span class="news-title"></span><span class="news-date"></span>';
+            link.querySelector('.news-title').textContent = item.title;
+            if (item.date) {
+              const date = new Date(item.date);
+              if (!Number.isNaN(date.getTime())) {
+                link.querySelector('.news-date').textContent = date.toLocaleDateString('es-ES', {
+                  day: 'numeric',
+                  month: 'short',
+                });
+              }
+            }
+            wrap.appendChild(link);
+          }
+
+          group.appendChild(wrap);
+          list.appendChild(group);
+        }
+
+        newsLoaded = true;
+        meta.textContent = 'Titulares actualizados · los enlaces se abren en una pestaña nueva';
+      } catch {
+        list.innerHTML = '<p class="news-empty">Error de conexión al cargar las noticias.</p>';
+      }
+    };
+
+    $('#newsBtn').addEventListener('click', () => {
+      newsModal.hidden = false;
+      loadNews();
+    });
+    $('#newsClose').addEventListener('click', () => {
+      newsModal.hidden = true;
+    });
+    newsModal.addEventListener('click', (event) => {
+      if (event.target === newsModal) newsModal.hidden = true;
     });
 
     // Ajustes: nombre, personalidad y modelo de tu IA

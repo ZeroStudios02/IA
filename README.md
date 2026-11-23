@@ -16,6 +16,8 @@ Aplicación web completa tipo **Grok / Gemini**: un chat de inteligencia artific
 - 🔒 La API key vive **solo en el servidor**: nunca llega al navegador
 - 🧪 **Modo demo** automático si no hay API key (para probar la web)
 - 🎭 **IA personalizada**: nombre, personalidad (instrucción de sistema) y modelo configurables desde la interfaz
+- 🌍 **Búsqueda web en tiempo real**: noticias actualizadas (Google News, Bing News), Wikipedia y Hacker News
+- 📰 **Panel de noticias de hoy** con titulares de BBC, El País, El Mundo, IGN, Marca y Xataka
 - 🚦 Rate limit básico por IP para evitar abusos
 
 ---

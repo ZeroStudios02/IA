@@ -35,6 +35,10 @@
           <span class="dot"></span>
           <span id="modeText">Conectando…</span>
         </div>
+        <button class="settings-btn" id="newsBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
+          <span>Noticias de hoy</span>
+        </button>
         <button class="settings-btn" id="settingsBtn" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span>Personalizar IA</span>
@@ -61,6 +65,9 @@
       <div class="composer-wrap">
         <div class="composer" id="composer">
           <textarea id="input" rows="1" placeholder="Pregúntale lo que quieras a Arena…" autocomplete="off" aria-label="Escribe tu mensaje"></textarea>
+          <button class="tool-btn active" id="webBtn" type="button" title="Búsqueda web activada" aria-label="Búsqueda web">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </button>
           <button class="send-btn stop" id="stopBtn" type="button" title="Detener generación" aria-label="Detener generación" hidden>
             <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>
           </button>
@@ -71,6 +78,20 @@
         <p class="disclaimer">Tu IA puede cometer errores. Verifica la información importante.</p>
       </div>
     </main>
+  </div>
+
+  <!-- ==================== NOTICIAS ==================== -->
+  <div class="modal-backdrop" id="newsModal" hidden>
+    <div class="modal news-modal" role="dialog" aria-modal="true" aria-labelledby="newsTitle">
+      <div class="modal-head">
+        <h2 id="newsTitle">📰 Noticias de hoy</h2>
+        <button class="icon-btn" id="newsClose" type="button" title="Cerrar" aria-label="Cerrar noticias">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="news-meta" id="newsMeta">Cargando titulares…</div>
+      <div class="news-list" id="newsList"></div>
+    </div>
   </div>
 
   <!-- ==================== AJUSTES ==================== -->
