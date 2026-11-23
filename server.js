@@ -181,14 +181,57 @@ app.post('/api/chat', rateLimit, async (req, res) => {
       const headers = { 'Content-Type': 'application/json' };
       if (FREE_AI_KEY) headers['Authorization'] = `Bearer ${FREE_AI_KEY}`;
 
-      const upstream = await fetch(FREE_AI_URL, {
+      // Con clave usamos el endpoint OpenAI-compatible (sin límite por IP);
+      // sin clave, el endpoint clásico gratuito (limitado por IP).
+      const endpoint = FREE_AI_KEY
+        ? `${FREE_AI_URL.replace(/\/+$/, '')}/openai`
+        : FREE_AI_URL;
+
+      const upstream = await fetch(endpoint, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ messages: chatMessages, model: FREE_AI_MODEL }),
+        body: JSON.stringify({
+          messages: chatMessages,
+          model: FREE_AI_MODEL,
+          ...(FREE_AI_KEY ? { stream: true } : {}),
+        }),
         signal: controller.signal,
       });
 
       if (!upstream.ok) throw new Error(`HTTP ${upstream.status} del motor gratuito`);
+
+      const contentType = upstream.headers.get('content-type') || '';
+
+      if (FREE_AI_KEY && contentType.includes('text/event-stream') && upstream.body) {
+        // Streaming real (SSE estilo OpenAI)
+        const reader = upstream.body.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sseBuffer += decoder.decode(value, { stream: true });
+
+          let newline;
+          while ((newline = sseBuffer.indexOf('\n')) !== -1) {
+            const line = sseBuffer.slice(0, newline).trim();
+            sseBuffer = sseBuffer.slice(newline + 1);
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+
+            try {
+              const json = JSON.parse(payload);
+              const delta = json?.choices?.[0]?.delta?.content;
+              if (delta) send({ delta });
+            } catch {
+              /* fragmento no JSON */
+            }
+          }
+        }
+        return finish();
+      }
 
       const text = (await upstream.text()).trim();
       if (!text) throw new Error('El motor gratuito devolvió una respuesta vacía.');
