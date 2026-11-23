@@ -58,6 +58,16 @@ Desde la barra lateral → **Personalizar IA** puedes definir, sin tocar código
 Los ajustes se guardan en el navegador y se envían al servidor en cada mensaje,
 que los aplica como instrucción de sistema. ✨
 
+## 🧠 Motores de IA disponibles
+
+| Motor | Variable | Clave necesaria | Notas |
+|---|---|---|---|
+| **Gemini** (recomendado) | `GEMINI_API_KEY` | Sí | Máxima calidad |
+| **Gratuito sin clave** | `AI_PROVIDER=pollinations` | No | Ideal para empezar |
+| **Demo** | por defecto sin clave | No | Respuestas simuladas |
+
+> El motor gratuito es un servicio comunitario con límites de uso; para producción estable, usa Gemini.
+
 ## 🔑 Obtener tu API key de Gemini (gratis)
 
 1. Entra en [Google AI Studio](https://aistudio.google.com/apikey).

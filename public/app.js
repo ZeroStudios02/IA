@@ -786,14 +786,19 @@
       const response = await fetch('/api/health', { cache: 'no-store' });
       const data = await response.json();
 
+      const name = settings.name || 'IA';
       if (data.mode === 'demo') {
         chip.classList.add('demo');
-        label.textContent = 'Modo demo · sin API key';
-        document.title = 'IA · Modo demo';
+        label.textContent = 'Modo demo · sin motor';
+        document.title = `${name} · Modo demo`;
+      } else if (data.mode === 'pollinations') {
+        chip.classList.add('live');
+        label.textContent = 'Motor gratuito · sin API key';
+        document.title = `${name} · Tu asistente de IA`;
       } else {
         chip.classList.add('live');
         label.textContent = `Gemini · ${data.model}`;
-        document.title = 'IA · Gemini';
+        document.title = `${name} · Gemini`;
       }
     } catch {
       label.textContent = 'Sin conexión con el servidor';

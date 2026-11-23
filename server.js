@@ -1,13 +1,15 @@
 'use strict';
 
 /**
- * IA — Servidor de chat con Google Gemini
+ * IA — Servidor de chat con IA
  * ----------------------------------------
  * - Sirve la interfaz web (carpeta /public)
  * - Expone POST /api/chat con streaming (SSE) hacia el navegador
- * - Llama a la API de Gemini (streamGenerateContent) desde el servidor,
- *   de modo que la API key NUNCA llega al cliente.
- * - Si no hay GEMINI_API_KEY, entra en "modo demo" para probar la web.
+ * - Motores disponibles:
+ *     · gemini       → API oficial de Google (requiere GEMINI_API_KEY)
+ *     · pollinations → motor gratuito sin clave (AI_PROVIDER=pollinations)
+ *     · demo         → respuestas simuladas para probar la web
+ * - La API key vive solo en el servidor: nunca llega al cliente.
  */
 
 const express = require('express');
@@ -21,7 +23,12 @@ const PORT = process.env.PORT || 3000;
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const BASE_URL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/models').replace(/\/+$/, '');
-const DEMO = !API_KEY;
+
+// Motor de IA: 'gemini' (con clave), 'pollinations' (gratuito, sin clave) o 'demo'
+const PROVIDER = (process.env.AI_PROVIDER || (API_KEY ? 'gemini' : 'demo')).toLowerCase();
+const FREE_AI_URL = process.env.FREE_AI_URL || 'https://text.pollinations.ai/';
+const FREE_AI_MODEL = process.env.FREE_AI_MODEL || 'openai';
+const DEMO = PROVIDER === 'demo';
 
 const SYSTEM_PROMPT =
   process.env.SYSTEM_PROMPT ||
@@ -32,6 +39,9 @@ const SYSTEM_PROMPT =
 const TEMPERATURE = Number(process.env.TEMPERATURE || 0.8);
 const MAX_OUTPUT_TOKENS = Number(process.env.MAX_OUTPUT_TOKENS || 4096);
 const RATE_LIMIT_PER_MIN = Number(process.env.RATE_LIMIT_PER_MIN || 30);
+
+const AVAILABLE_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+const MODEL_ID_RE = /^gemini-[a-z0-9.-]+$/i;
 
 /* ------------------------------- Middlewares ----------------------------- */
 
@@ -63,11 +73,13 @@ function rateLimit(req, res, next) {
 
 /* --------------------------------- Salud --------------------------------- */
 
-const AVAILABLE_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
-const MODEL_ID_RE = /^gemini-[a-z0-9.-]+$/i;
-
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, mode: DEMO ? 'demo' : 'gemini', model: MODEL, models: AVAILABLE_MODELS });
+  res.json({
+    ok: true,
+    mode: PROVIDER,
+    model: PROVIDER === 'gemini' ? MODEL : FREE_AI_MODEL,
+    models: AVAILABLE_MODELS,
+  });
 });
 
 /* --------------------------------- Chat ---------------------------------- */
@@ -79,7 +91,7 @@ app.post('/api/chat', rateLimit, async (req, res) => {
     return res.status(400).json({ error: 'No se ha enviado ningún mensaje.' });
   }
 
-  // Normalizamos el historial al formato de Gemini (roles user/model)
+  // Normalizamos el historial al formato interno
   const contents = [];
   for (const m of messages.slice(-40)) {
     if (!m || typeof m.content !== 'string') continue;
@@ -110,25 +122,37 @@ app.post('/api/chat', rateLimit, async (req, res) => {
   const send = (obj) => {
     if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`);
   };
+  let responseFinished = false;
   const finish = () => {
     if (!res.writableEnded) {
+      responseFinished = true;
       res.write('data: [DONE]\n\n');
       res.end();
     }
   };
+
+  const customPersona = typeof persona === 'string' ? persona.trim().slice(0, 2000) : '';
+  const modelId = typeof model === 'string' && MODEL_ID_RE.test(model) ? model : MODEL;
+
+  const controller = new AbortController();
+  // Solo abortamos si el cliente se desconecta antes de terminar
+  res.on('close', () => {
+    if (!responseFinished) controller.abort();
+  });
 
   /* ------------------------------ MODO DEMO ------------------------------ */
   if (DEMO) {
     const lastUser = contents[contents.length - 1].parts[0].text;
     const demoText =
       '¡Hola! 👋 Soy **IA**, tu asistente.\n\n' +
-      'Ahora mismo estoy funcionando en **modo demo**, porque el servidor todavía no tiene una clave de Gemini configurada.\n\n' +
+      'Ahora mismo estoy funcionando en **modo demo**, porque el servidor no tiene ningún motor de IA activo.\n\n' +
       '### Cómo activarme con IA real\n' +
       '1. Abre tu servicio **IA** en el panel de Render.\n' +
       '2. Ve a la pestaña **Environment**.\n' +
-      '3. Añade la variable `GEMINI_API_KEY` con tu clave de Google AI Studio.\n' +
+      '3. Añade la variable `GEMINI_API_KEY` con tu clave de Google AI Studio\n' +
+      '   (o `AI_PROVIDER=pollinations` para usar el motor gratuito sin clave).\n' +
       '4. Guarda los cambios y espera a que Render redespliegue.\n\n' +
-      'Cuando la clave esté lista, podré responder de verdad a tu mensaje:\n\n' +
+      'Cuando el motor esté listo, podré responder de verdad a tu mensaje:\n\n' +
       `> "${lastUser.slice(0, 120)}"`;
     const tokens = demoText.split(/(?=\s)/);
     for (const token of tokens) {
@@ -139,10 +163,44 @@ app.post('/api/chat', rateLimit, async (req, res) => {
     return finish();
   }
 
-  /* ------------------------------ MODO GEMINI ---------------------------- */
-  const customPersona = typeof persona === 'string' ? persona.trim().slice(0, 2000) : '';
-  const modelId = typeof model === 'string' && MODEL_ID_RE.test(model) ? model : MODEL;
+  /* ---------------------- MOTOR GRATUITO (SIN CLAVE) --------------------- */
+  if (PROVIDER === 'pollinations') {
+    try {
+      const chatMessages = [{ role: 'system', content: customPersona || SYSTEM_PROMPT }];
+      for (const c of contents) {
+        chatMessages.push({
+          role: c.role === 'model' ? 'assistant' : 'user',
+          content: c.parts[0].text,
+        });
+      }
 
+      const upstream = await fetch(FREE_AI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: chatMessages, model: FREE_AI_MODEL }),
+        signal: controller.signal,
+      });
+
+      if (!upstream.ok) throw new Error(`HTTP ${upstream.status} del motor gratuito`);
+
+      const text = (await upstream.text()).trim();
+      if (!text) throw new Error('El motor gratuito devolvió una respuesta vacía.');
+
+      // Emitimos en streaming para mantener la experiencia de chat en vivo
+      for (const token of text.split(/(?=\s)/)) {
+        if (res.writableEnded) break;
+        send({ delta: token });
+        await sleep(12);
+      }
+      return finish();
+    } catch (err) {
+      const aborted = err?.name === 'AbortError';
+      send({ error: aborted ? 'Generación cancelada.' : `Error del motor gratuito: ${err?.message || err}` });
+      return finish();
+    }
+  }
+
+  /* ------------------------------ MODO GEMINI ---------------------------- */
   const body = {
     contents,
     systemInstruction: { parts: [{ text: customPersona || SYSTEM_PROMPT }] },
@@ -152,9 +210,6 @@ app.post('/api/chat', rateLimit, async (req, res) => {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
     },
   };
-
-  const controller = new AbortController();
-  req.on('close', () => controller.abort());
 
   try {
     const url = `${BASE_URL}/${encodeURIComponent(modelId)}:streamGenerateContent?alt=sse`;
@@ -232,8 +287,14 @@ app.get('*', (req, res) => {
 /* --------------------------------- Arranque ------------------------------ */
 
 app.listen(PORT, '0.0.0.0', () => {
+  const motorLabel =
+    PROVIDER === 'gemini'
+      ? `Gemini (${MODEL})`
+      : PROVIDER === 'pollinations'
+        ? `gratuito (${FREE_AI_MODEL})`
+        : 'DEMO (sin clave)';
   console.log(`✅ IA escuchando en http://0.0.0.0:${PORT}`);
-  console.log(`   Modo: ${DEMO ? 'DEMO (sin GEMINI_API_KEY)' : `Gemini (${MODEL})`}`);
+  console.log(`   Motor: ${motorLabel}`);
 });
 
 function sleep(ms) {
