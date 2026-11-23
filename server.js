@@ -28,6 +28,7 @@ const BASE_URL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.goo
 const PROVIDER = (process.env.AI_PROVIDER || (API_KEY ? 'gemini' : 'demo')).toLowerCase();
 const FREE_AI_URL = process.env.FREE_AI_URL || 'https://text.pollinations.ai/';
 const FREE_AI_MODEL = process.env.FREE_AI_MODEL || 'openai';
+const FREE_AI_KEY = (process.env.FREE_AI_KEY || '').trim();
 const DEMO = PROVIDER === 'demo';
 
 const SYSTEM_PROMPT =
@@ -174,9 +175,12 @@ app.post('/api/chat', rateLimit, async (req, res) => {
         });
       }
 
+      const headers = { 'Content-Type': 'application/json' };
+      if (FREE_AI_KEY) headers['Authorization'] = `Bearer ${FREE_AI_KEY}`;
+
       const upstream = await fetch(FREE_AI_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ messages: chatMessages, model: FREE_AI_MODEL }),
         signal: controller.signal,
       });
@@ -195,7 +199,22 @@ app.post('/api/chat', rateLimit, async (req, res) => {
       return finish();
     } catch (err) {
       const aborted = err?.name === 'AbortError';
-      send({ error: aborted ? 'Generación cancelada.' : `Error del motor gratuito: ${err?.message || err}` });
+      if (aborted) {
+        send({ error: 'Generación cancelada.' });
+        return finish();
+      }
+
+      // Modo de reserva: la web nunca se queda sin respuesta
+      const fallback =
+        '⚠️ El motor gratuito no está disponible en este momento (tiene límites por IP compartida).\n\n' +
+        'Para usar tu IA sin límites, añade una clave de Gemini en **Render → Environment**:\n' +
+        '`GEMINI_API_KEY` = tu clave de Google AI Studio (empieza por `AIza...`).\n\n' +
+        'Puedes generarla gratis en https://aistudio.google.com/apikey';
+      for (const token of fallback.split(/(?=\s)/)) {
+        if (res.writableEnded) break;
+        send({ delta: token });
+        await sleep(10);
+      }
       return finish();
     }
   }
