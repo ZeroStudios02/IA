@@ -12,6 +12,7 @@
 
   const LS_CONVS = 'ia.conversations.v1';
   const LS_ACTIVE = 'ia.active.v1';
+  const LS_SETTINGS = 'ia.settings.v1';
 
   const ICON_COPY =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -38,6 +39,13 @@
   let streaming = false;
   let controller = null;
   let stickBottom = true;
+
+  let settings = { name: 'IA', persona: '', model: 'gemini-2.5-flash' };
+  try {
+    settings = { ...settings, ...(JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}') || {}) };
+  } catch {
+    /* valores por defecto */
+  }
 
   try {
     conversations = JSON.parse(localStorage.getItem(LS_CONVS) || '[]') || [];
@@ -301,6 +309,14 @@
     }
   }
 
+  function applyBranding() {
+    const name = (settings.name || 'IA').trim() || 'IA';
+    $('.logo-name').textContent = name;
+    document.title = `${name} · Tu asistente de IA`;
+    const note = $('#footNote');
+    if (note) note.textContent = `${name} · Tu asistente personal`;
+  }
+
   function updateTitle() {
     const conv = activeConv();
     $('#chatTitle').textContent = conv ? conv.title || 'Nueva conversación' : 'Nueva conversación';
@@ -311,7 +327,7 @@
     el.className = 'welcome';
     el.innerHTML = `
       <div class="welcome-mark" aria-hidden="true">✦</div>
-      <h2>Hola, soy <span class="grad">IA</span></h2>
+      <h2>Hola, soy <span class="grad">${escapeHtml(settings.name || 'IA')}</span></h2>
       <p class="welcome-sub">¿En qué puedo ayudarte hoy?</p>
       <div class="chips">
         ${SUGGESTIONS.map(
@@ -498,6 +514,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: conv.messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
+          persona: settings.persona,
+          model: settings.model,
         }),
         signal: abortController.signal,
       });
@@ -712,6 +730,51 @@
       const chip = event.target.closest('.chip');
       if (chip && chip.dataset.prompt) send(chip.dataset.prompt);
     });
+
+    // Ajustes: nombre, personalidad y modelo de tu IA
+    const settingsModal = $('#settingsModal');
+
+    const openSettings = () => {
+      $('#setName').value = settings.name || 'IA';
+      $('#setModel').value = settings.model || 'gemini-2.5-flash';
+      $('#setPersona').value = settings.persona || '';
+      settingsModal.hidden = false;
+    };
+    const closeSettings = () => {
+      settingsModal.hidden = true;
+    };
+
+    $('#settingsBtn').addEventListener('click', openSettings);
+    $('#settingsClose').addEventListener('click', closeSettings);
+    settingsModal.addEventListener('click', (event) => {
+      if (event.target === settingsModal) closeSettings();
+    });
+
+    $('#settingsSave').addEventListener('click', () => {
+      settings.name = ($('#setName').value || 'IA').trim().slice(0, 24) || 'IA';
+      settings.model = $('#setModel').value || 'gemini-2.5-flash';
+      settings.persona = ($('#setPersona').value || '').slice(0, 2000);
+      try {
+        localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+      } catch {
+        /* sin almacenamiento */
+      }
+      applyBranding();
+      renderMessages();
+      closeSettings();
+    });
+
+    $('#settingsReset').addEventListener('click', () => {
+      settings = { name: 'IA', persona: '', model: 'gemini-2.5-flash' };
+      try {
+        localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+      } catch {
+        /* sin almacenamiento */
+      }
+      applyBranding();
+      renderMessages();
+      openSettings();
+    });
   }
 
   /* ---------------------------------- Salud -------------------------------- */
@@ -741,6 +804,7 @@
 
   function init() {
     renderSidebar();
+    applyBranding();
     renderMessages();
     updateTitle();
     loadHealth();

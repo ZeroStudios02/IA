@@ -63,14 +63,17 @@ function rateLimit(req, res, next) {
 
 /* --------------------------------- Salud --------------------------------- */
 
+const AVAILABLE_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+const MODEL_ID_RE = /^gemini-[a-z0-9.-]+$/i;
+
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, mode: DEMO ? 'demo' : 'gemini', model: MODEL });
+  res.json({ ok: true, mode: DEMO ? 'demo' : 'gemini', model: MODEL, models: AVAILABLE_MODELS });
 });
 
 /* --------------------------------- Chat ---------------------------------- */
 
 app.post('/api/chat', rateLimit, async (req, res) => {
-  const { messages } = req.body || {};
+  const { messages, persona, model } = req.body || {};
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'No se ha enviado ningún mensaje.' });
@@ -137,9 +140,12 @@ app.post('/api/chat', rateLimit, async (req, res) => {
   }
 
   /* ------------------------------ MODO GEMINI ---------------------------- */
+  const customPersona = typeof persona === 'string' ? persona.trim().slice(0, 2000) : '';
+  const modelId = typeof model === 'string' && MODEL_ID_RE.test(model) ? model : MODEL;
+
   const body = {
     contents,
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    systemInstruction: { parts: [{ text: customPersona || SYSTEM_PROMPT }] },
     generationConfig: {
       temperature: TEMPERATURE,
       topP: 0.95,
@@ -151,7 +157,7 @@ app.post('/api/chat', rateLimit, async (req, res) => {
   req.on('close', () => controller.abort());
 
   try {
-    const url = `${BASE_URL}/${encodeURIComponent(MODEL)}:streamGenerateContent?alt=sse`;
+    const url = `${BASE_URL}/${encodeURIComponent(modelId)}:streamGenerateContent?alt=sse`;
     const upstream = await fetch(url, {
       method: 'POST',
       headers: {
