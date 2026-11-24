@@ -31,11 +31,48 @@
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
 
   const SUGGESTIONS = [
-    { icon: '✍️', label: 'Escríbeme un correo profesional', prompt: 'Escríbeme un correo profesional para pedir una reunión con mi equipo la próxima semana.' },
-    { icon: '💡', label: 'Explícame algo fácil', prompt: 'Explícame la fotosíntesis como si tuviera 10 años.' },
-    { icon: '👨‍💻', label: 'Ayúdame con código', prompt: 'Créame una página web sencilla con HTML y CSS para una cafetería.' },
-    { icon: '🗺️', label: 'Plan de viaje', prompt: 'Hazme un plan de viaje de 3 días por Granada, en España.' },
-    { icon: '📰', label: 'Noticias de hoy', prompt: 'Dame un resumen de las noticias más importantes de hoy en el mundo.' },
+    {
+      icon: '✍️',
+      title: 'Redactar',
+      desc: 'Un correo profesional para mi equipo',
+      prompt: 'Escríbeme un correo profesional para pedir una reunión con mi equipo la próxima semana.',
+      tone: 'blue',
+    },
+    {
+      icon: '💡',
+      title: 'Aprender',
+      desc: 'Explícame la fotosíntesis como si tuviera 10 años',
+      prompt: 'Explícame la fotosíntesis como si tuviera 10 años.',
+      tone: 'violet',
+    },
+    {
+      icon: '👨‍💻',
+      title: 'Programar',
+      desc: 'Una página web para una cafetería',
+      prompt: 'Créame una página web sencilla con HTML y CSS para una cafetería.',
+      tone: 'green',
+    },
+    {
+      icon: '🗺️',
+      title: 'Planear',
+      desc: 'Un viaje de 3 días por Granada',
+      prompt: 'Hazme un plan de viaje de 3 días por Granada, en España.',
+      tone: 'orange',
+    },
+    {
+      icon: '📰',
+      title: 'Ponerme al día',
+      desc: 'Las noticias más importantes de hoy',
+      prompt: 'Dame un resumen de las noticias más importantes de hoy en el mundo.',
+      tone: 'red',
+    },
+    {
+      icon: '🎨',
+      title: 'Crear una imagen',
+      desc: 'Dibuja un zorro leyendo en una biblioteca',
+      prompt: 'Dibuja un zorro naranja leyendo un libro en una biblioteca acogedora.',
+      tone: 'pink',
+    },
   ];
 
   /* -------------------------------- Estado -------------------------------- */
@@ -368,14 +405,20 @@
     const el = document.createElement('div');
     el.className = 'welcome';
     el.innerHTML = `
-      <div class="welcome-mark" aria-hidden="true">✦</div>
-      <h2>Hola, soy <span class="grad">${escapeHtml(settings.name || 'IA')}</span></h2>
+      <div class="welcome-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2.5c.6 4.9 4.6 8.9 9.5 9.5-4.9.6-8.9 4.6-9.5 9.5C11.4 16.6 7.4 12.6 2.5 12 7.4 11.4 11.4 7.4 12 2.5Z"/>
+        </svg>
+      </div>
+      <h2 class="welcome-title">Hola, soy <span class="grad">${escapeHtml(settings.name || 'Arena')}</span></h2>
       <p class="welcome-sub">¿En qué puedo ayudarte hoy?</p>
-      <div class="chips">
+      <div class="suggestion-grid">
         ${SUGGESTIONS.map(
           (s) =>
-            `<button class="chip" type="button" data-prompt="${escapeHtml(s.prompt)}">` +
-            `<span class="chip-ico" aria-hidden="true">${s.icon}</span><span>${escapeHtml(s.label)}</span></button>`
+            `<button class="suggestion tone-${s.tone}" type="button" data-prompt="${escapeHtml(s.prompt)}">` +
+            `<span class="sug-icon" aria-hidden="true">${s.icon}</span>` +
+            `<span class="sug-body"><span class="sug-title">${escapeHtml(s.title)}</span>` +
+            `<span class="sug-desc">${escapeHtml(s.desc)}</span></span></button>`
         ).join('')}
       </div>`;
     return el;
