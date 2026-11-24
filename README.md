@@ -7,7 +7,7 @@ Aplicación web completa tipo **Grok / Gemini**: un chat de inteligencia artific
 ## ✨ Características
 
 - 💬 Chat en tiempo real con **streaming** (SSE) de las respuestas
-- 🧠 Motor **Google Gemini** (`gemini-2.5-flash` por defecto, configurable)
+- 🧠 Motor configurable: **OpenRouter** (miles de modelos, varios gratuitos), Google Gemini o Pollinations
 - 🗂️ Historial de conversaciones guardado en el navegador (`localStorage`)
 - ✏️ Títulos automáticos, eliminar y regenerar respuestas
 - 📋 Copiar mensajes y bloques de código con un clic
@@ -67,11 +67,15 @@ que los aplica como instrucción de sistema. ✨
 
 | Motor | Variable | Clave necesaria | Notas |
 |---|---|---|---|
-| **Gemini** (recomendado) | `GEMINI_API_KEY` | Sí | Máxima calidad |
+| **OpenRouter** (recomendado) | `AI_PROVIDER=openrouter` | `OPENROUTER_API_KEY` | Miles de modelos, varios gratuitos |
+| **Gemini** | `AI_PROVIDER=gemini` | `GEMINI_API_KEY` | Máxima calidad de Google |
 | **Gratuito sin clave** | `AI_PROVIDER=pollinations` | No | Ideal para empezar |
-| **Demo** | por defecto sin clave | No | Respuestas simuladas |
+| **Demo** | `AI_PROVIDER=demo` | No | Respuestas simuladas |
 
-> El motor gratuito es un servicio comunitario con límites de uso; para producción estable, usa Gemini.
+> El motor se elige con `AI_PROVIDER`. Si no lo defines, el servidor usa el primero que
+> tenga clave disponible en este orden: Gemini → GitHub → OpenRouter → Pollinations.
+> Los modelos `:free` de OpenRouter tienen límites de uso; si se agotan, cambia
+> `OPENROUTER_MODEL` por otro modelo gratuito de [openrouter.ai/models](https://openrouter.ai/models?q=free).
 
 ## 🔑 Obtener tu API key de Gemini (gratis)
 
