@@ -63,6 +63,17 @@ Desde la barra lateral → **Personalizar IA** puedes definir, sin tocar código
 Los ajustes se guardan en el navegador y se envían al servidor en cada mensaje,
 que los aplica como instrucción de sistema. ✨
 
+## ✨ Funciones
+
+- 💬 **Chat con streaming** real, historial persistente y búsqueda en la barra lateral
+- 🖼️ **Sube imágenes y archivos**: Arena ve la imagen (visión) y lee documentos de texto
+- 🎨 **Genera imágenes** pidiéndolo ("dibuja un zorro en una biblioteca")
+- 🧠 **Memoria**: recuerda datos tuyos entre sesiones (se edita en Ajustes → Memoria)
+- 🔍 **Búsqueda web + noticias** en tiempo real, con citas
+- 🎤 Dictado por voz, tema claro/oscuro, Markdown y atajos de teclado
+
+> El generador de imágenes es gratuito: **1 imagen cada 45 segundos**. La interfaz te avisa con una cuenta atrás.
+
 ## 🧠 Motores de IA disponibles
 
 | Motor | Variable | Clave necesaria | Notas |

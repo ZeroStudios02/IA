@@ -384,7 +384,32 @@
     if (msg.role === 'user') {
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
-      bubble.textContent = msg.content;
+      if (Array.isArray(msg.images) && msg.images.length) {
+        const grid = document.createElement('div');
+        grid.className = 'msg-thumbs';
+        msg.images.forEach((src) => {
+          const img = document.createElement('img');
+          img.src = src;
+          img.alt = 'Imagen adjuntada';
+          img.addEventListener('click', () => window.open(src, '_blank'));
+          grid.appendChild(img);
+        });
+        bubble.appendChild(grid);
+      }
+      if (Array.isArray(msg.files) && msg.files.length) {
+        const filesEl = document.createElement('div');
+        filesEl.className = 'msg-files';
+        msg.files.forEach((f) => {
+          const tag = document.createElement('span');
+          tag.className = 'file-tag';
+          tag.textContent = '📄 ' + f.name;
+          filesEl.appendChild(tag);
+        });
+        bubble.appendChild(filesEl);
+      }
+      const texto = document.createElement('div');
+      texto.textContent = msg.content;
+      bubble.appendChild(texto);
       el.appendChild(bubble);
 
       if (index !== null) {
@@ -404,6 +429,28 @@
         <div class="msg-content md"></div>
       </div>`;
     $('.msg-content', el).innerHTML = mdToHtml(msg.content);
+
+    if (msg.image) {
+      const wrap = document.createElement('div');
+      wrap.className = 'generated-image';
+      const img = document.createElement('img');
+      img.src = msg.image;
+      img.alt = 'Imagen generada';
+      img.addEventListener('click', () => window.open(msg.image, '_blank'));
+      wrap.appendChild(img);
+      const actions = document.createElement('div');
+      actions.className = 'image-actions';
+      actions.innerHTML =
+        '<button class="action-btn" type="button" data-download="1" title="Descargar">⬇ Descargar</button>';
+      actions.querySelector('[data-download]').addEventListener('click', () => {
+        const a = document.createElement('a');
+        a.href = msg.image;
+        a.download = 'arena-imagen.jpg';
+        a.click();
+      });
+      wrap.appendChild(actions);
+      $('.msg-body', el).appendChild(wrap);
+    }
 
     if (withActions) {
       $('.msg-body', el).appendChild(buildActions());
@@ -544,6 +591,202 @@
     backdropEl.classList.remove('show');
   }
 
+  /* ------------------------------ Adjuntos ------------------------------ */
+
+  function renderAttachments() {
+    const strip = $('#attachStrip');
+    if (!strip) return;
+    strip.hidden = attachments.length === 0;
+    strip.innerHTML = '';
+    attachments.forEach((att, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'attach-chip';
+      if (att.kind === 'image') {
+        chip.innerHTML = `<img src="${att.dataURL}" alt=""><span>Imagen</span>`;
+      } else {
+        chip.innerHTML = `<span class="attach-file">📄</span><span>${att.name}</span>`;
+      }
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'attach-remove';
+      remove.title = 'Quitar';
+      remove.setAttribute('aria-label', 'Quitar adjunto');
+      remove.textContent = '×';
+      remove.addEventListener('click', () => {
+        attachments.splice(i, 1);
+        renderAttachments();
+      });
+      chip.appendChild(remove);
+      strip.appendChild(chip);
+    });
+  }
+
+  function resizeImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = reject;
+        img.onload = () => {
+          const max = 1024;
+          const scale = Math.min(1, max / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const TEXT_TYPES = /\.(txt|md|json|csv|js|ts|py|html|css|xml|yml|yaml|log|svg)$/i;
+
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    for (const file of files.slice(0, 4)) {
+      if (file.type.startsWith('image/')) {
+        if (attachments.filter((a) => a.kind === 'image').length >= 3) {
+          alert('Máximo 3 imágenes por mensaje.');
+          continue;
+        }
+        try {
+          attachments.push({ kind: 'image', dataURL: await resizeImage(file) });
+        } catch {
+          alert(`No se pudo leer la imagen ${file.name}.`);
+        }
+      } else if (TEXT_TYPES.test(file.name)) {
+        const text = await file.text();
+        if (text.length > 60000) {
+          alert(`${file.name} es demasiado grande (máx. 60 KB de texto).`);
+          continue;
+        }
+        attachments.push({ kind: 'file', name: file.name, text });
+      } else {
+        alert(`${file.name}: formato no compatible. Sube imágenes, .txt, .md, .json, .csv, .js, .py…`);
+      }
+    }
+    renderAttachments();
+    const inputEl = $('#input');
+    if (inputEl) inputEl.focus();
+  }
+
+  /* ------------------------------- Memoria ------------------------------- */
+
+  function saveMemory() {
+    try {
+      localStorage.setItem(LS_MEMORY, JSON.stringify(memory));
+    } catch {
+      /* sin espacio */
+    }
+  }
+
+  function captureMemory(text) {
+    const nuevos = [];
+    const patrones = [
+      /\brecuerda\s+que\s+(.{3,200})/i,
+      /\bme\s+llamo\s+([A-ZÁÉÍÓÚÑ][\wáéíóúñ]{1,30})/i,
+      /\bmi\s+nombre\s+es\s+([A-ZÁÉÍÓÚÑ][\wáéíóúñ]{1,30})/i,
+      /\btrabajo\s+de\s+([\wáéíóúñ\s]{3,40})/i,
+      /\bvivo\s+en\s+([\wáéíóúñ\s]{3,40})/i,
+    ];
+    for (const re of patrones) {
+      const m = text.match(re);
+      if (m) {
+        const fact = m[0].trim().replace(/[.!?]+$/, '');
+        if (fact.length >= 3 && !memory.some((x) => x.toLowerCase() === fact.toLowerCase())) {
+          nuevos.push(fact);
+        }
+      }
+    }
+    if (nuevos.length) {
+      memory = [...nuevos, ...memory].slice(0, 50);
+      saveMemory();
+    }
+    return nuevos.length;
+  }
+
+  /* ------------------------- Generación de imágenes ------------------------- */
+
+  const IMG_RE =
+    /\b(genera|generar|crea|crear|dibuja|dibujar|hazme|haz|píntame|pintame|diseña|disena)\s+(?:una\s+|un\s+|el\s+|la\s+)?(imagen|foto|fotografia|fotografía|dibujo|ilustracion|ilustración|logo|portada|fondo|wallpaper|paisaje|personaje)\b/i;
+
+  function wantsImage(text) {
+    return IMG_RE.test(text) && !/\b(imagen|foto)\b.*\b(analizar|describir|explicar)\b/i.test(text);
+  }
+
+  // Cooldown del generador gratuito (1 imagen cada 45 s)
+  let imageCooldownUntil = 0;
+  function imageCooldownLeft() {
+    return Math.max(0, Math.ceil((imageCooldownUntil - Date.now()) / 1000));
+  }
+  function setImageCooldown(seconds) {
+    imageCooldownUntil = Date.now() + seconds * 1000;
+    setTimeout(() => {
+      const btn = $('#attachBtn');
+      if (btn) btn.title = 'Adjuntar imagen o archivo';
+    }, seconds * 1000);
+  }
+
+  async function generateImage(conv, prompt) {
+    const userMsg = { role: 'user', content: prompt, ts: Date.now() };
+    conv.messages.push(userMsg);
+    if (conv.title === 'Nueva conversación') {
+      conv.title = prompt.length > 42 ? prompt.slice(0, 42).trimEnd() + '…' : prompt;
+    }
+    save();
+    renderSidebar();
+    updateTitle();
+
+    $$('.msg-actions').forEach((el) => el.remove());
+    const welcome = $('.welcome');
+    if (welcome) welcome.remove();
+
+    messagesEl.appendChild(buildMessage(userMsg, { index: conv.messages.length - 1 }));
+
+    const assistant = { role: 'assistant', content: '', image: null, ts: Date.now() };
+    conv.messages.push(assistant);
+
+    const holder = document.createElement('div');
+    holder.className = 'msg assistant';
+    holder.innerHTML =
+      '<div class="avatar" aria-hidden="true">✦</div>' +
+      '<div class="msg-body"><div class="image-wait">🎨 Generando imagen<span class="dots"><i></i><i></i><i></i></span></div></div>';
+    messagesEl.appendChild(holder);
+    scrollToBottom(true);
+    setStreaming(true);
+
+    try {
+      const response = await fetch('/api/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, ratio: 'square' }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 429 && data.retryAfter) {
+        setImageCooldown(Number(data.retryAfter) || 45);
+        throw new Error(data.error || 'El generador está en enfriamiento.');
+      }
+      if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo generar la imagen.');
+      setImageCooldown(45);
+      assistant.image = data.image;
+      assistant.content = '';
+    } catch (error) {
+      assistant.content = '⚠️ ' + (error.message || 'No se pudo generar la imagen.');
+    } finally {
+      setStreaming(false);
+      save();
+      renderSidebar();
+      renderMessages();
+      scrollToBottom(true);
+    }
+  }
+
   /* ------------------------------- Streaming ------------------------------- */
 
   function setStreaming(on) {
@@ -573,6 +816,11 @@
           persona: settings.persona,
           model: settings.model,
           search: webSearch,
+          memory,
+          images: attachments.filter((a) => a.kind === 'image').map((a) => a.dataURL),
+          files: attachments
+            .filter((a) => a.kind === 'file')
+            .map((a) => ({ name: a.name, text: a.text })),
         }),
         signal: abortController.signal,
       });
@@ -616,6 +864,13 @@
 
             if (event.error) throw new Error(event.error);
 
+            if (event.note === 'reserva' && !stream.reserveChip) {
+              stream.reserveChip = document.createElement('div');
+              stream.reserveChip.className = 'search-chip reserve-chip';
+              stream.reserveChip.textContent = '⚡ Motor de reserva';
+              stream.bodyEl.insertBefore(stream.reserveChip, stream.contentEl);
+            }
+
             if (event.searched) {
               assistant.searched = true;
               if (!stream.searchChip) {
@@ -657,12 +912,46 @@
 
   async function send(rawText) {
     const text = (rawText || '').trim();
-    if (!text || streaming) return;
+    if (streaming) return;
+    if (!text && attachments.length === 0) return;
 
     const conv = ensureConv();
     closeSidebarMobile();
 
-    conv.messages.push({ role: 'user', content: text, ts: Date.now() });
+    // ¿Quiere generar una imagen?
+    if (text && attachments.length === 0 && wantsImage(text)) {
+      captureMemory(text);
+      const left = imageCooldownLeft();
+      if (left > 0) {
+        conv.messages.push({
+          role: 'user',
+          content: text,
+          ts: Date.now(),
+        });
+        conv.messages.push({
+          role: 'assistant',
+          content: `⏳ El generador gratuito solo permite **1 imagen cada 45 segundos**. Vuelve a intentarlo en ${left} s.`,
+          ts: Date.now(),
+        });
+        save();
+        renderSidebar();
+        renderMessages();
+        scrollToBottom(true);
+        return;
+      }
+      await generateImage(conv, text);
+      return;
+    }
+
+    captureMemory(text);
+
+    conv.messages.push({
+      role: 'user',
+      content: text,
+      ts: Date.now(),
+      images: attachments.filter((a) => a.kind === 'image').map((a) => a.dataURL),
+      files: attachments.filter((a) => a.kind === 'file').map((a) => ({ name: a.name })),
+    });
     if (conv.title === 'Nueva conversación') {
       conv.title = text.length > 42 ? text.slice(0, 42).trimEnd() + '…' : text;
     }
@@ -676,9 +965,12 @@
     if (welcome) welcome.remove();
 
     messagesEl.appendChild(
-      buildMessage({ role: 'user', content: text }, { index: conv.messages.length - 1 })
+      buildMessage(conv.messages[conv.messages.length - 1], { index: conv.messages.length - 1 })
     );
     scrollToBottom(true);
+
+    attachments = [];
+    renderAttachments();
 
     await requestReply(conv);
   }
@@ -744,7 +1036,7 @@
   function sendFromInput() {
     if (streaming) return;
     const value = inputEl.value;
-    if (!value.trim()) return;
+    if (!value.trim() && attachments.length === 0) return;
     inputEl.value = '';
     inputEl.style.height = 'auto';
     send(value);
@@ -810,6 +1102,49 @@
     });
 
     // Dictado por voz (Web Speech API)
+    // Adjuntar archivos e imágenes
+    const fileInput = $('#fileInput');
+    const attachBtn = $('#attachBtn');
+    if (attachBtn && fileInput) {
+      attachBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => {
+        handleFiles(fileInput.files);
+        fileInput.value = '';
+      });
+    }
+
+    // Arrastrar y soltar sobre la zona de escritura
+    const composerEl = $('#composer');
+    if (composerEl) {
+      ['dragenter', 'dragover'].forEach((ev) =>
+        composerEl.addEventListener(ev, (e) => {
+          if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) {
+            e.preventDefault();
+            composerEl.classList.add('dragging');
+          }
+        })
+      );
+      ['dragleave', 'drop'].forEach((ev) =>
+        composerEl.addEventListener(ev, (e) => {
+          e.preventDefault();
+          composerEl.classList.remove('dragging');
+          if (ev === 'drop' && e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
+        })
+      );
+    }
+
+    // Pegar imagen desde el portapapeles
+    const inputEl = $('#input');
+    if (inputEl) {
+      inputEl.addEventListener('paste', (e) => {
+        const items = Array.from(e.clipboardData?.items || []);
+        const imageItems = items.filter((i) => i.type.startsWith('image/'));
+        if (!imageItems.length) return;
+        e.preventDefault();
+        handleFiles(imageItems.map((i) => i.getAsFile()).filter(Boolean));
+      });
+    }
+
     const micBtn = $('#micBtn');
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -1026,6 +1361,8 @@
       $('#setName').value = settings.name || 'IA';
       $('#setModel').value = settings.model || $('#setModel').value || '';
       $('#setPersona').value = settings.persona || '';
+      const memoryEl = $('#setMemory');
+      if (memoryEl) memoryEl.value = memory.join('\n');
       settingsModal.hidden = false;
     };
     const closeSettings = () => {
@@ -1043,6 +1380,15 @@
       settings.name = ($('#setName').value || 'IA').trim().slice(0, 24) || 'IA';
       settings.model = $('#setModel').value || '';
       settings.persona = ($('#setPersona').value || '').slice(0, 2000);
+      const memoryEl = $('#setMemory');
+      if (memoryEl) {
+        memory = memoryEl.value
+          .split('\n')
+          .map((l) => l.trim().slice(0, 300))
+          .filter(Boolean)
+          .slice(0, 50);
+        saveMemory();
+      }
       try {
         localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
       } catch {

@@ -80,8 +80,13 @@
       <div class="messages" id="messages" aria-live="polite"></div>
 
       <div class="composer-wrap">
+        <div class="attach-strip" id="attachStrip" hidden></div>
         <div class="composer" id="composer">
           <textarea id="input" rows="1" placeholder="Pregúntale lo que quieras a Arena…" autocomplete="off" aria-label="Escribe tu mensaje"></textarea>
+          <button class="tool-btn" id="attachBtn" type="button" title="Adjuntar imagen o archivo" aria-label="Adjuntar imagen o archivo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <input type="file" id="fileInput" multiple accept="image/*,.txt,.md,.json,.csv,.js,.ts,.py,.html,.css,.xml,.yml,.yaml,.log,.svg" hidden />
           <button class="tool-btn mic-btn" id="micBtn" type="button" title="Dictar por voz" aria-label="Dictar por voz">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
           </button>
@@ -133,6 +138,10 @@
           <select id="setModel">
             <option value="nvidia/nemotron-3-ultra-550b-a55b:free">Nemotron 3 Ultra 550B</option>
           </select>
+        </label>
+        <label class="field">
+          <span>Memoria · lo que Arena recuerda de ti <em>(una cosa por línea)</em></span>
+          <textarea id="setMemory" rows="4" placeholder="Me llamo Alex&#10;Me gusta el café&#10;Prefiero respuestas cortas"></textarea>
         </label>
         <label class="field">
           <span>Personalidad · instrucción de sistema</span>

@@ -26,6 +26,13 @@ const BASE_URL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.goo
 
 const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim();
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+// Modelo gratuito con visión (para las imágenes que sube la persona)
+const OPENROUTER_VISION_MODEL = 'nvidia/nemotron-3.5-super-vl:free';
+const OPENROUTER_VISION_MODELS = [
+  'nvidia/nemotron-3.5-super-vl:free',
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+];
+
 // Modelos gratuitos de OpenRouter que funcionan bien en español (el primero es el por defecto)
 const OPENROUTER_MODELS = [
   'nvidia/nemotron-3-ultra-550b-a55b:free',
@@ -86,7 +93,7 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'same-origin');
   next();
 });
-app.use(express.json({ limit: '512kb' }));
+app.use(express.json({ limit: '12mb' }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], maxAge: '1h' }));
 
 /* Rate limit sencillo en memoria (por IP) */
@@ -312,8 +319,67 @@ app.get('/api/search', async (req, res) => {
 
 /* --------------------------------- Chat ---------------------------------- */
 
+/* --------------------------- GENERAR IMÁGENES --------------------------- */
+app.post('/api/image', rateLimit, async (req, res) => {
+  const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim().slice(0, 800) : '';
+  if (prompt.length < 3) {
+    return res.status(400).json({ error: 'Describe la imagen que quieres generar.' });
+  }
+
+  const ratio =
+    req.body?.ratio === 'wide' ? [1280, 720] : req.body?.ratio === 'tall' ? [720, 1280] : [1024, 1024];
+  const seed = Math.floor(Math.random() * 1_000_000);
+  const url =
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+    `?width=${ratio[0]}&height=${ratio[1]}&nologo=true&model=flux&seed=${seed}&enhance=true`;
+
+  try {
+    const upstream = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+
+    // Límite del servicio gratuito: 1 imagen cada 45 s por IP
+    if (upstream.status === 402 || upstream.status === 429) {
+      let wait = 45;
+      try {
+        const body = await upstream.json();
+        const m = /retry after (\d+)/i.exec(body?.error?.message || '');
+        if (m) wait = Number(m[1]) + 1;
+      } catch {
+        /* cuerpo no JSON */
+      }
+      return res.status(429).json({
+        error: `El generador gratuito solo permite 1 imagen cada 45 segundos. Espera ${wait} s y vuelve a intentarlo.`,
+        retryAfter: wait,
+      });
+    }
+
+    if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    if (buf.length < 2000) throw new Error('imagen vacía');
+    const mime = upstream.headers.get('content-type') || 'image/jpeg';
+    res.json({ ok: true, image: `data:${mime};base64,${buf.toString('base64')}` });
+  } catch (err) {
+    console.error('Generar imagen:', err?.message || err);
+    res.status(502).json({ error: 'No se pudo generar la imagen ahora mismo. Inténtalo de nuevo en unos segundos.' });
+  }
+});
+
 app.post('/api/chat', rateLimit, async (req, res) => {
   const { messages, persona, model, search } = req.body || {};
+  const images = Array.isArray(req.body?.images)
+    ? req.body.images.filter((u) => typeof u === 'string' && /^data:image\//.test(u)).slice(0, 3)
+    : [];
+  const files = Array.isArray(req.body?.files)
+    ? req.body.files
+        .filter((f) => f && typeof f.name === 'string' && typeof f.text === 'string' && f.text.trim())
+        .slice(0, 4)
+    : [];
+  const memory = Array.isArray(req.body?.memory)
+    ? req.body.memory
+        .filter((m) => typeof m === 'string')
+        .map((m) => m.trim().slice(0, 300))
+        .filter(Boolean)
+        .slice(0, 50)
+    : [];
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'No se ha enviado ningún mensaje.' });
@@ -376,6 +442,21 @@ const modelId =
     if (!responseFinished) controller.abort();
   });
 
+  // Archivos adjuntos: se añaden al último mensaje del usuario
+  let attachmentsText = '';
+  if (files.length) {
+    attachmentsText =
+      '\n\nDOCUMENTOS ADJUNTOS:\n' +
+      files
+        .map((f) => {
+          const name = f.name.slice(0, 120);
+          const text = f.text.slice(0, 20000);
+          return `--- ${name} ---\n${text}\n--- fin de ${name} ---`;
+        })
+        .join('\n');
+    contents[contents.length - 1].parts[0].text += attachmentsText;
+  }
+
   // ¿Buscamos información actualizada en la web?
   const lastUserText = contents[contents.length - 1].parts[0].text;
   const FRESH_RE =
@@ -404,6 +485,12 @@ const modelId =
 
   let systemText = customPersona || SYSTEM_PROMPT;
   systemText += `\n\nFecha actual: ${fechaHoy} (España).`;
+  if (memory.length) {
+    systemText +=
+      '\n\nMEMORIA SOBRE LA PERSONA CON LA QUE HABLAS (datos que ella te dio; úsalos con ' +
+      'naturalidad, sin repetirlos si no aportan nada):\n- ' +
+      memory.join('\n- ');
+  }
   if (usedSearch) {
     systemText +=
       '\n\nRESULTADOS DE BÚSQUEDA EN LA WEB (recientes). Úsalos para dar información actualizada y cita las fuentes cuando sea relevante:\n' +
@@ -523,6 +610,88 @@ const modelId =
     }
   }
 
+  /* --------------- MOTOR DE RESERVA (POLLINATIONS) --------------- */
+  const runPollinations = async () => {
+    try {
+      const chatMessages = [{ role: 'system', content: systemText }];
+      for (const c of contents) {
+        chatMessages.push({
+          role: c.role === 'model' ? 'assistant' : 'user',
+          content: c.parts[0].text,
+        });
+      }
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (FREE_AI_KEY) headers['Authorization'] = `Bearer ${FREE_AI_KEY}`;
+
+      const endpoint = FREE_AI_KEY
+        ? `${FREE_AI_URL.replace(/\/+$/, '')}/openai`
+        : FREE_AI_URL;
+
+      const upstream = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          messages: chatMessages,
+          model: FREE_AI_MODEL,
+          ...(FREE_AI_KEY ? { stream: true } : {}),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
+
+      const contentType = upstream.headers.get('content-type') || '';
+
+      if (FREE_AI_KEY && contentType.includes('text/event-stream') && upstream.body) {
+        const reader = upstream.body.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sseBuffer += decoder.decode(value, { stream: true });
+
+          let newline;
+          while ((newline = sseBuffer.indexOf('\n')) !== -1) {
+            const line = sseBuffer.slice(0, newline).trim();
+            sseBuffer = sseBuffer.slice(newline + 1);
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+
+            try {
+              const json = JSON.parse(payload);
+              const delta = json?.choices?.[0]?.delta?.content;
+              if (delta) send({ delta });
+            } catch {
+              /* fragmento no JSON */
+            }
+          }
+        }
+        return true;
+      }
+
+      const text = (await upstream.text()).trim();
+      if (!text) throw new Error('respuesta vacía');
+
+      for (const token of text.split(/(?=\s)/)) {
+        if (res.writableEnded) break;
+        send({ delta: token });
+        await sleep(12);
+      }
+      return true;
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        send({ error: 'Generación cancelada.' });
+        return true;
+      }
+      console.error('Pollinations:', err?.message || err);
+      return false;
+    }
+  };
+
   /* ------------------------------ OPENROUTER ------------------------------ */
   if (PROVIDER === 'openrouter') {
     try {
@@ -532,6 +701,15 @@ const modelId =
           role: c.role === 'model' ? 'assistant' : 'user',
           content: c.parts[0].text,
         });
+      }
+
+      // Con imágenes, el último mensaje pasa a ser multimodal
+      if (images.length) {
+        const last = chatMessages[chatMessages.length - 1];
+        last.content = [
+          { type: 'text', text: last.content },
+          ...images.map((url) => ({ type: 'image_url', image_url: { url } })),
+        ];
       }
 
       const callOpenRouter = (modelIdToUse) =>
@@ -551,11 +729,15 @@ const modelId =
           signal: controller.signal,
         });
 
-      let upstream = await callOpenRouter(modelId);
+      const modeloFinal = images.length && !OPENROUTER_VISION_MODELS.includes(modelId)
+        ? OPENROUTER_VISION_MODEL
+        : modelId;
+
+      let upstream = await callOpenRouter(modeloFinal);
 
       // Si el modelo elegido falla (429/5xx), reintenta con el modelo por defecto
-      if (!upstream.ok && modelId !== OPENROUTER_MODEL) {
-        console.warn(`OpenRouter: ${modelId} → HTTP ${upstream.status}, reintento con ${OPENROUTER_MODEL}`);
+      if (!upstream.ok && modeloFinal !== OPENROUTER_MODEL) {
+        console.warn(`OpenRouter: ${modeloFinal} → HTTP ${upstream.status}, reintento con ${OPENROUTER_MODEL}`);
         upstream = await callOpenRouter(OPENROUTER_MODEL);
       }
 
@@ -611,9 +793,16 @@ const modelId =
         send({ error: 'Generación cancelada.' });
         return finish();
       }
+      console.error('OpenRouter:', err?.message || err);
+
+      // Motor de reserva automático: nunca dejar a la persona sin respuesta
+      send({ note: 'reserva' });
+      const ok = await runPollinations();
+      if (ok) return finish();
+
       const fallback =
-        '⚠️ OpenRouter no está disponible ahora mismo (límite temporal del modelo gratuito).\n\n' +
-        'Inténtalo de nuevo en unos segundos. Si el problema continúa, podemos cambiar a otro modelo.';
+        '⚠️ Los motores gratuitos están saturados ahora mismo.\n\n' +
+        'Inténtalo de nuevo en unos segundos: suele durar poco.';
       for (const token of fallback.split(/(?=\s)/)) {
         if (res.writableEnded) break;
         send({ delta: token });
@@ -625,100 +814,19 @@ const modelId =
 
   /* ---------------------- MOTOR GRATUITO (SIN CLAVE) --------------------- */
   if (PROVIDER === 'pollinations') {
-    try {
-      const chatMessages = [{ role: 'system', content: systemText }];
-      for (const c of contents) {
-        chatMessages.push({
-          role: c.role === 'model' ? 'assistant' : 'user',
-          content: c.parts[0].text,
-        });
-      }
+    const ok = await runPollinations();
+    if (ok) return finish();
 
-      const headers = { 'Content-Type': 'application/json' };
-      if (FREE_AI_KEY) headers['Authorization'] = `Bearer ${FREE_AI_KEY}`;
-
-      // Con clave usamos el endpoint OpenAI-compatible (sin límite por IP);
-      // sin clave, el endpoint clásico gratuito (limitado por IP).
-      const endpoint = FREE_AI_KEY
-        ? `${FREE_AI_URL.replace(/\/+$/, '')}/openai`
-        : FREE_AI_URL;
-
-      const upstream = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          messages: chatMessages,
-          model: FREE_AI_MODEL,
-          ...(FREE_AI_KEY ? { stream: true } : {}),
-        }),
-        signal: controller.signal,
-      });
-
-      if (!upstream.ok) throw new Error(`HTTP ${upstream.status} del motor gratuito`);
-
-      const contentType = upstream.headers.get('content-type') || '';
-
-      if (FREE_AI_KEY && contentType.includes('text/event-stream') && upstream.body) {
-        // Streaming real (SSE estilo OpenAI)
-        const reader = upstream.body.getReader();
-        const decoder = new TextDecoder();
-        let sseBuffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          sseBuffer += decoder.decode(value, { stream: true });
-
-          let newline;
-          while ((newline = sseBuffer.indexOf('\n')) !== -1) {
-            const line = sseBuffer.slice(0, newline).trim();
-            sseBuffer = sseBuffer.slice(newline + 1);
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (!payload || payload === '[DONE]') continue;
-
-            try {
-              const json = JSON.parse(payload);
-              const delta = json?.choices?.[0]?.delta?.content;
-              if (delta) send({ delta });
-            } catch {
-              /* fragmento no JSON */
-            }
-          }
-        }
-        return finish();
-      }
-
-      const text = (await upstream.text()).trim();
-      if (!text) throw new Error('El motor gratuito devolvió una respuesta vacía.');
-
-      // Emitimos en streaming para mantener la experiencia de chat en vivo
-      for (const token of text.split(/(?=\s)/)) {
-        if (res.writableEnded) break;
-        send({ delta: token });
-        await sleep(12);
-      }
-      return finish();
-    } catch (err) {
-      const aborted = err?.name === 'AbortError';
-      if (aborted) {
-        send({ error: 'Generación cancelada.' });
-        return finish();
-      }
-
-      // Modo de reserva: la web nunca se queda sin respuesta
-      const fallback =
-        '⚠️ El motor gratuito no está disponible en este momento (tiene límites por IP compartida).\n\n' +
-        'Para usar tu IA sin límites, añade una clave de Gemini en **Render → Environment**:\n' +
-        '`GEMINI_API_KEY` = tu clave de Google AI Studio (empieza por `AIza...`).\n\n' +
-        'Puedes generarla gratis en https://aistudio.google.com/apikey';
-      for (const token of fallback.split(/(?=\s)/)) {
-        if (res.writableEnded) break;
-        send({ delta: token });
-        await sleep(10);
-      }
-      return finish();
+    // Modo de reserva: la web nunca se queda sin respuesta
+    const fallback =
+      '⚠️ El motor gratuito no está disponible en este momento (límites por IP compartida).\n\n' +
+      'Inténtalo de nuevo en unos segundos. Si sigue fallando, cambia de modelo en los ajustes.';
+    for (const token of fallback.split(/(?=\s)/)) {
+      if (res.writableEnded) break;
+      send({ delta: token });
+      await sleep(10);
     }
+    return finish();
   }
 
   /* ------------------------------ MODO GEMINI ---------------------------- */
