@@ -284,28 +284,40 @@ app.get('/api/search', async (req, res) => {
 
 app.get('/api/debug-github', async (req, res) => {
   if (PROVIDER !== 'github') return res.json({ skip: true, provider: PROVIDER });
-  try {
-    const upstream = await fetch('https://models.github.ai/inference/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${GITHUB_TOKEN}`,
-      },
-      body: JSON.stringify({
-        model: GITHUB_MODEL,
-        messages: [{ role: 'user', content: 'Di hola' }],
-        max_tokens: 30,
-      }),
-    });
-    const text = await upstream.text();
-    res.json({
-      status: upstream.status,
-      contentType: upstream.headers.get('content-type'),
-      body: text.slice(0, 600),
-    });
-  } catch (err) {
-    res.json({ error: String(err) });
+
+  const endpoints = [
+    'https://models.github.ai/inference/chat/completions',
+    'https://models.inference.ai.azure.com/chat/completions',
+  ];
+
+  const results = [];
+  for (const endpoint of endpoints) {
+    try {
+      const upstream = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${GITHUB_TOKEN}`,
+        },
+        body: JSON.stringify({
+          model: GITHUB_MODEL,
+          messages: [{ role: 'user', content: 'Di hola' }],
+          max_tokens: 30,
+        }),
+      });
+      const text = await upstream.text();
+      results.push({
+        endpoint,
+        status: upstream.status,
+        contentType: upstream.headers.get('content-type'),
+        body: text.slice(0, 300),
+      });
+    } catch (err) {
+      results.push({ endpoint, error: String(err) });
+    }
   }
+
+  res.json({ tokenPrefix: GITHUB_TOKEN.slice(0, 11), results });
 });
 
 /* --------------------------------- Chat ---------------------------------- */
