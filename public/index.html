@@ -28,6 +28,11 @@
         <span>Nueva conversación</span>
       </button>
 
+      <div class="conv-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="convSearch" type="text" placeholder="Buscar chats" autocomplete="off" aria-label="Buscar conversaciones" />
+      </div>
+
       <nav class="conv-list" id="convList" aria-label="Historial de conversaciones"></nav>
 
       <div class="sidebar-foot">
@@ -58,6 +63,18 @@
         <div class="chat-heading">
           <h1 id="chatTitle">Nueva conversación</h1>
         </div>
+
+        <div class="header-actions">
+          <button class="model-pill" id="modelPill" type="button" title="Motor de IA · clic para ajustes">
+            <span class="pill-dot"></span>
+            <span id="modelPillText">Arena</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <button class="icon-btn theme-btn" id="themeBtn" type="button" title="Cambiar tema" aria-label="Cambiar tema">
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+        </div>
       </header>
 
       <div class="messages" id="messages" aria-live="polite"></div>
@@ -65,6 +82,9 @@
       <div class="composer-wrap">
         <div class="composer" id="composer">
           <textarea id="input" rows="1" placeholder="Pregúntale lo que quieras a Arena…" autocomplete="off" aria-label="Escribe tu mensaje"></textarea>
+          <button class="tool-btn mic-btn" id="micBtn" type="button" title="Dictar por voz" aria-label="Dictar por voz">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+          </button>
           <button class="tool-btn active" id="webBtn" type="button" title="Búsqueda web activada" aria-label="Búsqueda web">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           </button>

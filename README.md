@@ -18,6 +18,9 @@ Aplicación web completa tipo **Grok / Gemini**: un chat de inteligencia artific
 - 🎭 **IA personalizada**: nombre, personalidad (instrucción de sistema) y modelo configurables desde la interfaz
 - 🌍 **Búsqueda web en tiempo real**: noticias actualizadas (Google News, Bing News), Wikipedia y Hacker News
 - 📰 **Panel de noticias de hoy** con titulares de BBC, El País, El Mundo, IGN, Marca y Xataka
+- ✏️ **Edición de mensajes**, sugerencias rápidas y regeneración
+- 🎙️ **Dictado por voz** (Web Speech API) y buscador de chats
+- 🌗 **Tema claro/oscuro** con selector de modelo estilo ChatGPT
 - 🚦 Rate limit básico por IP para evitar abusos
 
 ---

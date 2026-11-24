@@ -22,6 +22,8 @@
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
   const ICON_TRASH =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>';
+  const ICON_EDIT =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
   const ICON_CHAT =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
 
@@ -53,6 +55,14 @@
     webSearch = localStorage.getItem('ia.web.v1') !== '0';
   } catch {
     /* activada por defecto */
+  }
+
+  let convFilter = '';
+  let theme = 'dark';
+  try {
+    theme = localStorage.getItem('ia.theme.v1') || 'dark';
+  } catch {
+    /* tema oscuro por defecto */
   }
 
   try {
@@ -292,15 +302,25 @@
     const list = $('#convList');
     list.innerHTML = '';
 
-    if (!conversations.length) {
+    const filtered = conversations.filter((conv) => {
+      if (!convFilter) return true;
+      if ((conv.title || '').toLowerCase().includes(convFilter)) return true;
+      return (conv.messages || []).some((m) =>
+        (m.content || '').toLowerCase().includes(convFilter)
+      );
+    });
+
+    if (!filtered.length) {
       const empty = document.createElement('p');
       empty.className = 'empty-list';
-      empty.textContent = 'Aún no hay conversaciones. ¡Empieza una nueva!';
+      empty.textContent = conversations.length
+        ? `Sin resultados para “${convFilter}”.`
+        : 'Aún no hay conversaciones. ¡Empieza una nueva!';
       list.appendChild(empty);
       return;
     }
 
-    for (const conv of conversations) {
+    for (const conv of filtered) {
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'conv-item' + (conv.id === activeId ? ' active' : '');
@@ -325,6 +345,16 @@
     if (note) note.textContent = `${name} · Tu asistente personal`;
   }
 
+  function applyTheme(next) {
+    theme = next;
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem('ia.theme.v1', next);
+    } catch {
+      /* sin almacenamiento */
+    }
+  }
+
   function updateTitle() {
     const conv = activeConv();
     $('#chatTitle').textContent = conv ? conv.title || 'Nueva conversación' : 'Nueva conversación';
@@ -347,7 +377,7 @@
     return el;
   }
 
-  function buildMessage(msg, { withActions = false } = {}) {
+  function buildMessage(msg, { withActions = false, index = null } = {}) {
     const el = document.createElement('div');
     el.className = 'msg ' + msg.role;
 
@@ -356,6 +386,14 @@
       bubble.className = 'bubble';
       bubble.textContent = msg.content;
       el.appendChild(bubble);
+
+      if (index !== null) {
+        el.dataset.index = String(index);
+        const actions = document.createElement('div');
+        actions.className = 'user-actions';
+        actions.innerHTML = `<button class="action-btn" data-edit="${index}" type="button" title="Editar mensaje" aria-label="Editar mensaje">${ICON_EDIT}</button>`;
+        el.appendChild(actions);
+      }
       return el;
     }
 
@@ -394,7 +432,7 @@
     conv.messages.forEach((msg, index) => {
       const isLast = index === conv.messages.length - 1;
       messagesEl.appendChild(
-        buildMessage(msg, { withActions: msg.role === 'assistant' && isLast })
+        buildMessage(msg, { withActions: msg.role === 'assistant' && isLast, index })
       );
     });
 
@@ -427,6 +465,15 @@
   function finalizeMessage(stream, msg) {
     stream.contentEl.innerHTML = mdToHtml(msg.content);
     stream.bodyEl.appendChild(buildActions());
+
+    const quick = document.createElement('div');
+    quick.className = 'quick-actions';
+    quick.innerHTML = `
+      <button class="quick-btn" type="button" data-quick="Explícamelo más simple, con un lenguaje fácil">↺ Más simple</button>
+      <button class="quick-btn" type="button" data-quick="Dame un ejemplo práctico de lo que acabas de explicar">💡 Un ejemplo</button>
+      <button class="quick-btn" type="button" data-quick="Resúmelo en 3 puntos clave">📋 Resumir</button>`;
+    stream.bodyEl.appendChild(quick);
+
     scrollToBottom(false);
   }
 
@@ -628,10 +675,53 @@
     const welcome = $('.welcome');
     if (welcome) welcome.remove();
 
-    messagesEl.appendChild(buildMessage({ role: 'user', content: text }));
+    messagesEl.appendChild(
+      buildMessage({ role: 'user', content: text }, { index: conv.messages.length - 1 })
+    );
     scrollToBottom(true);
 
     await requestReply(conv);
+  }
+
+  function startEdit(index) {
+    const conv = activeConv();
+    if (!conv || streaming) return;
+    const msg = conv.messages[index];
+    if (!msg || msg.role !== 'user') return;
+
+    const msgEl = messagesEl.querySelector(`.msg.user[data-index="${index}"]`);
+    if (!msgEl) return;
+
+    const editor = document.createElement('div');
+    editor.className = 'edit-box';
+    editor.innerHTML = `
+      <textarea aria-label="Editar mensaje"></textarea>
+      <div class="edit-actions">
+        <button class="btn-ghost small" type="button" data-edit-cancel>Cancelar</button>
+        <button class="btn-primary small" type="button" data-edit-save>Guardar y enviar</button>
+      </div>`;
+
+    msgEl.innerHTML = '';
+    msgEl.appendChild(editor);
+
+    const textarea = editor.querySelector('textarea');
+    textarea.value = msg.content;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 220) + 'px';
+
+    editor.querySelector('[data-edit-cancel]').addEventListener('click', () => renderMessages());
+    editor.querySelector('[data-edit-save]').addEventListener('click', () => {
+      const value = textarea.value.trim();
+      if (!value) return;
+      msg.content = value;
+      conv.messages = conv.messages.slice(0, index + 1);
+      save();
+      renderSidebar();
+      renderMessages();
+      requestReply(conv);
+    });
   }
 
   async function regenerate() {
@@ -707,6 +797,74 @@
     $('#sidebarClose').addEventListener('click', closeSidebarMobile);
     backdropEl.addEventListener('click', closeSidebarMobile);
 
+    // Tema claro / oscuro
+    $('#themeBtn').addEventListener('click', () => {
+      applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+    });
+
+    // Buscador de chats
+    const convSearch = $('#convSearch');
+    convSearch.addEventListener('input', () => {
+      convFilter = convSearch.value.trim().toLowerCase();
+      renderSidebar();
+    });
+
+    // Dictado por voz (Web Speech API)
+    const micBtn = $('#micBtn');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      let recognition = null;
+      let listening = false;
+
+      micBtn.addEventListener('click', () => {
+        if (listening) {
+          recognition.stop();
+          return;
+        }
+        recognition = new SpeechRecognition();
+        recognition.lang = 'es-ES';
+        recognition.interimResults = true;
+        recognition.continuous = false;
+
+        let finalText = '';
+        recognition.onresult = (event) => {
+          let interim = '';
+          for (const result of event.results) {
+            if (result.isFinal) finalText += result[0].transcript;
+            else interim += result[0].transcript;
+          }
+          inputEl.value = (inputEl.value.replace(/\s+$/, '') + ' ' + finalText + interim).trim();
+          inputEl.dispatchEvent(new Event('input'));
+        };
+        recognition.onend = () => {
+          listening = false;
+          micBtn.classList.remove('listening');
+        };
+        recognition.onerror = () => {
+          listening = false;
+          micBtn.classList.remove('listening');
+        };
+        recognition.start();
+        listening = true;
+        micBtn.classList.add('listening');
+      });
+    } else {
+      micBtn.hidden = true;
+    }
+
+    // Atajos de teclado
+    document.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openSidebarMobile();
+        convSearch.focus();
+      }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'o') {
+        event.preventDefault();
+        newChat();
+      }
+    });
+
     sendBtn.addEventListener('click', sendFromInput);
     stopBtn.addEventListener('click', stopGeneration);
 
@@ -748,6 +906,18 @@
 
       if (event.target.closest('[data-regen]')) {
         regenerate();
+        return;
+      }
+
+      const editBtn = event.target.closest('[data-edit]');
+      if (editBtn) {
+        startEdit(Number(editBtn.dataset.edit));
+        return;
+      }
+
+      const quickBtn = event.target.closest('[data-quick]');
+      if (quickBtn) {
+        send(quickBtn.dataset.quick);
         return;
       }
 
@@ -863,6 +1033,7 @@
     };
 
     $('#settingsBtn').addEventListener('click', openSettings);
+    $('#modelPill').addEventListener('click', openSettings);
     $('#settingsClose').addEventListener('click', closeSettings);
     settingsModal.addEventListener('click', (event) => {
       if (event.target === settingsModal) closeSettings();
@@ -905,6 +1076,14 @@
       const data = await response.json();
 
       const name = settings.name || 'IA';
+      const pillText = $('#modelPillText');
+      if (data.mode === 'gemini') {
+        pillText.textContent = data.model.replace(/^gemini-/i, 'Gemini ').replace(/-/g, ' ');
+      } else if (data.mode === 'pollinations') {
+        pillText.textContent = 'Arena';
+      } else {
+        pillText.textContent = 'Demo';
+      }
       if (data.mode === 'demo') {
         chip.classList.add('demo');
         label.textContent = 'Modo demo · sin motor';
@@ -926,6 +1105,7 @@
   /* ---------------------------------- Inicio -------------------------------- */
 
   function init() {
+    applyTheme(theme);
     renderSidebar();
     applyBranding();
     renderMessages();
