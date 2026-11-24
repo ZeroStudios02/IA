@@ -26,6 +26,21 @@ const BASE_URL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.goo
 
 const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim();
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+// Modelos gratuitos de OpenRouter que funcionan bien en español (el primero es el por defecto)
+const OPENROUTER_MODELS = [
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
+  'nvidia/nemotron-3.5-super-vl:free',
+  'inclusionai/ling-3.2-flash:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'google/gemma-4-31b-it:free',
+  'baidu/ernie-5.5-flash-preview:free',
+  'liquid/lfm-3-1.7b:free',
+  'particle-ai/particle-1:free',
+  'recursive/flint-v1.0:free',
+  'dots-studio/dots-3-note-preview:free',
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+  'nvidia/nemotron-3.5-lightning:free',
+];
 
 // GitHub Models (gratis con tu token de GitHub)
 const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
@@ -105,7 +120,7 @@ app.get('/api/health', (req, res) => {
           : PROVIDER === 'openrouter'
             ? OPENROUTER_MODEL
             : FREE_AI_MODEL,
-    models: AVAILABLE_MODELS,
+    models: PROVIDER === 'openrouter' ? OPENROUTER_MODELS : AVAILABLE_MODELS,
   });
 });
 
@@ -345,7 +360,15 @@ app.post('/api/chat', rateLimit, async (req, res) => {
   };
 
   const customPersona = typeof persona === 'string' ? persona.trim().slice(0, 2000) : '';
-  const modelId = typeof model === 'string' && MODEL_ID_RE.test(model) ? model : MODEL;
+  const requestedModel = typeof model === 'string' ? model.trim() : '';
+const modelId =
+  PROVIDER === 'openrouter'
+    ? OPENROUTER_MODELS.includes(requestedModel)
+      ? requestedModel
+      : OPENROUTER_MODEL
+    : MODEL_ID_RE.test(requestedModel)
+      ? requestedModel
+      : MODEL;
 
   const controller = new AbortController();
   // Solo abortamos si el cliente se desconecta antes de terminar
@@ -511,17 +534,30 @@ app.post('/api/chat', rateLimit, async (req, res) => {
         });
       }
 
-      const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://ia-w0xt.onrender.com',
-          'X-Title': 'Arena',
-        },
-        body: JSON.stringify({ model: OPENROUTER_MODEL, messages: chatMessages, stream: true }),
-        signal: controller.signal,
-      });
+      const callOpenRouter = (modelIdToUse) =>
+        fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+            'HTTP-Referer': 'https://ia-w0xt.onrender.com',
+            'X-Title': 'Arena',
+          },
+          body: JSON.stringify({
+            model: modelIdToUse,
+            messages: chatMessages,
+            stream: true,
+          }),
+          signal: controller.signal,
+        });
+
+      let upstream = await callOpenRouter(modelId);
+
+      // Si el modelo elegido falla (429/5xx), reintenta con el modelo por defecto
+      if (!upstream.ok && modelId !== OPENROUTER_MODEL) {
+        console.warn(`OpenRouter: ${modelId} → HTTP ${upstream.status}, reintento con ${OPENROUTER_MODEL}`);
+        upstream = await callOpenRouter(OPENROUTER_MODEL);
+      }
 
       if (!upstream.ok) throw new Error(`HTTP ${upstream.status} de OpenRouter`);
 

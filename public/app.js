@@ -1024,7 +1024,7 @@
 
     const openSettings = () => {
       $('#setName').value = settings.name || 'IA';
-      $('#setModel').value = settings.model || 'gemini-2.5-flash';
+      $('#setModel').value = settings.model || $('#setModel').value || '';
       $('#setPersona').value = settings.persona || '';
       settingsModal.hidden = false;
     };
@@ -1041,7 +1041,7 @@
 
     $('#settingsSave').addEventListener('click', () => {
       settings.name = ($('#setName').value || 'IA').trim().slice(0, 24) || 'IA';
-      settings.model = $('#setModel').value || 'gemini-2.5-flash';
+      settings.model = $('#setModel').value || '';
       settings.persona = ($('#setPersona').value || '').slice(0, 2000);
       try {
         localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
@@ -1068,6 +1068,29 @@
 
   /* ---------------------------------- Salud -------------------------------- */
 
+  // Nombre legible de un modelo: 'nvidia/nemotron-3-ultra-550b-a55b:free' → 'Nemotron 3 Ultra 550B'
+  function modelLabel(id) {
+    if (!id) return 'Arena';
+    if (/^gemini-/i.test(id)) return id.replace(/^gemini-/i, 'Gemini ').replace(/-/g, ' ');
+    const clean = id.replace(/:free$/, '').split('/').pop();
+    const known = {
+      'nemotron-3-ultra-550b-a55b': 'Nemotron 3 Ultra 550B',
+      'nemotron-3.5-super-vl': 'Nemotron 3.5 Super VL',
+      'nemotron-3.5-lightning': 'Nemotron 3.5 Lightning',
+      'nemotron-3-nano-omni-30b-a3b-reasoning': 'Nemotron Nano Omni 30B',
+      'gemma-4-26b-a4b-it': 'Gemma 4 26B',
+      'gemma-4-31b-it': 'Gemma 4 31B',
+      'ling-3.2-flash': 'Ling 3.2 Flash',
+      'ernie-5.5-flash-preview': 'Ernie 5.5 Flash',
+      'lfm-3-1.7b': 'LFM 3 1.7B',
+      'particle-1': 'Particle 1',
+      'flint-v1.0': 'Flint 1.0',
+      'dots-3-note-preview': 'Dots 3 Note',
+    };
+    if (known[clean]) return known[clean];
+    return clean.replace(/-/g, ' ').replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  }
+
   async function loadHealth() {
     const chip = $('#modeChip');
     const label = $('#modeText');
@@ -1077,25 +1100,38 @@
 
       const name = settings.name || 'IA';
       const pillText = $('#modelPillText');
-      if (data.mode === 'gemini') {
-        pillText.textContent = data.model.replace(/^gemini-/i, 'Gemini ').replace(/-/g, ' ');
+
+      // Rellena el selector con los modelos del motor activo
+      const select = $('#setModel');
+      if (select && Array.isArray(data.models) && data.models.length) {
+        select.innerHTML = data.models
+          .map((m) => `<option value="${m}">${modelLabel(m)}</option>`)
+          .join('');
+        const preferido = settings.model;
+        select.value = data.models.includes(preferido) ? preferido : data.model;
+        settings.model = select.value;
+      }
+
+      if (data.mode === 'openrouter') {
+        pillText.textContent = modelLabel(data.model);
+        chip.classList.add('live');
+        label.textContent = `OpenRouter · ${modelLabel(data.model)}`;
+        document.title = `${name} · Tu asistente de IA`;
+      } else if (data.mode === 'gemini') {
+        pillText.textContent = modelLabel(data.model);
+        chip.classList.add('live');
+        label.textContent = `Gemini · ${modelLabel(data.model)}`;
+        document.title = `${name} · Gemini`;
       } else if (data.mode === 'pollinations') {
         pillText.textContent = 'Arena';
-      } else {
-        pillText.textContent = 'Demo';
-      }
-      if (data.mode === 'demo') {
-        chip.classList.add('demo');
-        label.textContent = 'Modo demo · sin motor';
-        document.title = `${name} · Modo demo`;
-      } else if (data.mode === 'pollinations') {
         chip.classList.add('live');
         label.textContent = 'Motor gratuito · sin API key';
         document.title = `${name} · Tu asistente de IA`;
       } else {
-        chip.classList.add('live');
-        label.textContent = `Gemini · ${data.model}`;
-        document.title = `${name} · Gemini`;
+        pillText.textContent = 'Demo';
+        chip.classList.add('demo');
+        label.textContent = 'Modo demo · sin motor';
+        document.title = `${name} · Modo demo`;
       }
     } catch {
       label.textContent = 'Sin conexión con el servidor';
