@@ -1625,6 +1625,14 @@
   function modelLabel(id) {
     if (!id) return 'Arena';
     if (/^gemini-/i.test(id)) return id.replace(/^gemini-/i, 'Gemini ').replace(/-/g, ' ');
+    const openaiNames = {
+      'gpt-4o-mini': 'GPT-4o mini',
+      'gpt-4o': 'GPT-4o',
+      'gpt-4.1-mini': 'GPT-4.1 mini',
+      'gpt-4.1-nano': 'GPT-4.1 nano',
+      'o4-mini': 'o4-mini',
+    };
+    if (openaiNames[id]) return openaiNames[id];
     const clean = id.replace(/:free$/, '').split('/').pop();
     const known = {
       'nemotron-3-ultra-550b-a55b': 'Nemotron 3 Ultra 550B',
@@ -1665,7 +1673,12 @@
         settings.model = select.value;
       }
 
-      if (data.mode === 'openrouter') {
+      if (data.mode === 'openai') {
+        pillText.textContent = modelLabel(data.model);
+        chip.classList.add('live');
+        label.textContent = `OpenAI · ${modelLabel(data.model)}`;
+        document.title = `${name} · Tu asistente de IA`;
+      } else if (data.mode === 'openrouter') {
         pillText.textContent = modelLabel(data.model);
         chip.classList.add('live');
         label.textContent = `OpenRouter · ${modelLabel(data.model)}`;

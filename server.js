@@ -24,6 +24,10 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const BASE_URL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/models').replace(/\/+$/, '');
 
+const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1-nano', 'o4-mini'];
+
 const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim();
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 // Modelo gratuito con visión (para las imágenes que sube la persona)
@@ -62,7 +66,15 @@ const MOTOR_CAIDO_MIN = 10;
 // Si no se define AI_PROVIDER, se usa el primero que tenga clave disponible.
 const PROVIDER = (
   process.env.AI_PROVIDER ||
-  (API_KEY ? 'gemini' : GITHUB_TOKEN ? 'github' : OPENROUTER_API_KEY ? 'openrouter' : 'demo')
+  (API_KEY
+    ? 'gemini'
+    : OPENAI_API_KEY
+      ? 'openai'
+      : GITHUB_TOKEN
+        ? 'github'
+        : OPENROUTER_API_KEY
+          ? 'openrouter'
+          : 'demo')
 ).toLowerCase();
 const FREE_AI_URL = process.env.FREE_AI_URL || 'https://text.pollinations.ai/';
 const FREE_AI_MODEL = process.env.FREE_AI_MODEL || 'openai';
@@ -145,7 +157,12 @@ app.get('/api/health', (req, res) => {
           : PROVIDER === 'openrouter'
             ? OPENROUTER_MODEL
             : FREE_AI_MODEL,
-    models: PROVIDER === 'openrouter' ? OPENROUTER_MODELS : AVAILABLE_MODELS,
+    models:
+      PROVIDER === 'openai'
+        ? OPENAI_MODELS
+        : PROVIDER === 'openrouter'
+          ? OPENROUTER_MODELS
+          : AVAILABLE_MODELS,
   });
 });
 
@@ -647,6 +664,77 @@ const modelId =
   }
 
   /* --------------- MOTOR DE RESERVA (POLLINATIONS) --------------- */
+  const runOpenAI = async () => {
+    try {
+      const chatMessages = [{ role: 'system', content: systemText }];
+      for (const c of contents) {
+        chatMessages.push({
+          role: c.role === 'model' ? 'assistant' : 'user',
+          content: c.parts[0].text,
+        });
+      }
+
+      if (images.length) {
+        const last = chatMessages[chatMessages.length - 1];
+        last.content = [
+          { type: 'text', text: last.content },
+          ...images.map((url) => ({ type: 'image_url', image_url: { url } })),
+        ];
+      }
+
+      const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODELS.includes(requestedModel) ? requestedModel : OPENAI_MODEL,
+          messages: chatMessages,
+          stream: true,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
+
+      const reader = upstream.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let corte;
+        while ((corte = buffer.indexOf('\n')) !== -1) {
+          const linea = buffer.slice(0, corte).trim();
+          buffer = buffer.slice(corte + 1);
+          if (!linea.startsWith('data:')) continue;
+          const payload = linea.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+
+          try {
+            const json = JSON.parse(payload);
+            const delta = json?.choices?.[0]?.delta?.content;
+            if (delta) send({ delta });
+          } catch {
+            /* fragmento no JSON */
+          }
+        }
+      }
+      return true;
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        send({ error: 'Generación cancelada.' });
+        return true;
+      }
+      console.error('OpenAI:', err?.message || err);
+      return false;
+    }
+  };
+
   const runPollinations = async () => {
     try {
       const chatMessages = [{ role: 'system', content: systemText }];
@@ -839,6 +927,12 @@ const modelId =
 
   /* ---------------------- MOTOR GRATUITO (SIN CLAVE) --------------------- */
   // Cadena de motores: principal → reserva → el otro, si no se ha probado
+  if (PROVIDER === 'openai' && Date.now() >= motorPrincipalHasta) {
+    if (await runOpenAI()) return finish();
+    motorPrincipalHasta = Date.now() + MOTOR_CAIDO_MIN * 60_000;
+    console.warn('OpenAI sin saldo o caído; uso el motor de reserva.');
+  }
+
   if (PROVIDER === 'openrouter' && Date.now() >= motorPrincipalHasta) {
     if (await runOpenRouter()) return finish();
   }
