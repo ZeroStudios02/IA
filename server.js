@@ -25,10 +25,17 @@ const API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const BASE_URL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/models').replace(/\/+$/, '');
 
 // Motor de IA: 'gemini' (con clave), 'pollinations' (gratuito, sin clave) o 'demo'
-const PROVIDER = (process.env.AI_PROVIDER || (API_KEY ? 'gemini' : 'demo')).toLowerCase();
+const PROVIDER = (
+  process.env.AI_PROVIDER ||
+  (API_KEY ? 'gemini' : GITHUB_TOKEN ? 'github' : 'demo')
+).toLowerCase();
 const FREE_AI_URL = process.env.FREE_AI_URL || 'https://text.pollinations.ai/';
 const FREE_AI_MODEL = process.env.FREE_AI_MODEL || 'openai';
 const FREE_AI_KEY = (process.env.FREE_AI_KEY || '').trim();
+
+// GitHub Models (gratis con tu token de GitHub)
+const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
+const GITHUB_MODEL = process.env.GITHUB_MODEL || 'openai/gpt-4o-mini';
 const DEMO = PROVIDER === 'demo';
 
 const SYSTEM_PROMPT =
@@ -81,7 +88,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     mode: PROVIDER,
-    model: PROVIDER === 'gemini' ? MODEL : FREE_AI_MODEL,
+    model:
+      PROVIDER === 'gemini' ? MODEL : PROVIDER === 'github' ? GITHUB_MODEL : FREE_AI_MODEL,
     models: AVAILABLE_MODELS,
   });
 });
@@ -390,6 +398,93 @@ app.post('/api/chat', rateLimit, async (req, res) => {
     return finish();
   }
 
+  /* --------------------------- GITHUB MODELS --------------------------- */
+  if (PROVIDER === 'github') {
+    try {
+      const chatMessages = [{ role: 'system', content: systemText }];
+      for (const c of contents) {
+        chatMessages.push({
+          role: c.role === 'model' ? 'assistant' : 'user',
+          content: c.parts[0].text,
+        });
+      }
+
+      const upstream = await fetch('https://models.github.ai/inference/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${GITHUB_TOKEN}`,
+        },
+        body: JSON.stringify({ model: GITHUB_MODEL, messages: chatMessages, stream: true }),
+        signal: controller.signal,
+      });
+
+      if (!upstream.ok) throw new Error(`HTTP ${upstream.status} de GitHub Models`);
+
+      const contentType = upstream.headers.get('content-type') || '';
+
+      if (contentType.includes('text/event-stream') && upstream.body) {
+        const reader = upstream.body.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sseBuffer += decoder.decode(value, { stream: true });
+
+          let newline;
+          while ((newline = sseBuffer.indexOf('\n')) !== -1) {
+            const line = sseBuffer.slice(0, newline).trim();
+            sseBuffer = sseBuffer.slice(newline + 1);
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+
+            try {
+              const json = JSON.parse(payload);
+              const delta = json?.choices?.[0]?.delta?.content;
+              if (delta) send({ delta });
+            } catch {
+              /* fragmento no JSON */
+            }
+          }
+        }
+        return finish();
+      }
+
+      if (!contentType.includes('application/json')) {
+        throw new Error('Respuesta inesperada de GitHub Models (¿token sin permiso models:read?)');
+      }
+
+      const text = (await upstream.text()).trim();
+      if (!text) throw new Error('GitHub Models devolvió una respuesta vacía.');
+      for (const token of text.split(/(?=\s)/)) {
+        if (res.writableEnded) break;
+        send({ delta: token });
+        await sleep(10);
+      }
+      return finish();
+    } catch (err) {
+      const aborted = err?.name === 'AbortError';
+      if (aborted) {
+        send({ error: 'Generación cancelada.' });
+        return finish();
+      }
+      const fallback =
+        '⚠️ GitHub Models no está disponible con este token.\n\n' +
+        'Necesitas un token de acceso **fine-grained** con el permiso `models:read`:\n' +
+        'GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens.\n\n' +
+        'Mientras tanto, tu IA sigue funcionando con el motor gratuito.';
+      for (const token of fallback.split(/(?=\s)/)) {
+        if (res.writableEnded) break;
+        send({ delta: token });
+        await sleep(10);
+      }
+      return finish();
+    }
+  }
+
   /* ---------------------- MOTOR GRATUITO (SIN CLAVE) --------------------- */
   if (PROVIDER === 'pollinations') {
     try {
@@ -578,9 +673,11 @@ app.listen(PORT, '0.0.0.0', () => {
   const motorLabel =
     PROVIDER === 'gemini'
       ? `Gemini (${MODEL})`
-      : PROVIDER === 'pollinations'
-        ? `gratuito (${FREE_AI_MODEL})`
-        : 'DEMO (sin clave)';
+      : PROVIDER === 'github'
+        ? `GitHub Models (${GITHUB_MODEL})`
+        : PROVIDER === 'pollinations'
+          ? `gratuito (${FREE_AI_MODEL})`
+          : 'DEMO (sin clave)';
   console.log(`✅ IA escuchando en http://0.0.0.0:${PORT}`);
   console.log(`   Motor: ${motorLabel}`);
 });
