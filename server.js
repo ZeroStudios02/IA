@@ -280,6 +280,34 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+/* ------------------------- Diagnóstico GitHub Models ------------------------ */
+
+app.get('/api/debug-github', async (req, res) => {
+  if (PROVIDER !== 'github') return res.json({ skip: true, provider: PROVIDER });
+  try {
+    const upstream = await fetch('https://models.github.ai/inference/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
+      },
+      body: JSON.stringify({
+        model: GITHUB_MODEL,
+        messages: [{ role: 'user', content: 'Di hola' }],
+        max_tokens: 30,
+      }),
+    });
+    const text = await upstream.text();
+    res.json({
+      status: upstream.status,
+      contentType: upstream.headers.get('content-type'),
+      body: text.slice(0, 600),
+    });
+  } catch (err) {
+    res.json({ error: String(err) });
+  }
+});
+
 /* --------------------------------- Chat ---------------------------------- */
 
 app.post('/api/chat', rateLimit, async (req, res) => {
