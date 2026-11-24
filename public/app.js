@@ -11,6 +11,9 @@
   /* ------------------------------ Constantes ------------------------------ */
 
   const LS_CONVS = 'ia.conversations.v1';
+  const LS_MEMORY = 'ia.memory.v1';
+  let attachments = []; // {kind:'image', dataURL} | {kind:'file', name, text}
+  let memory = [];
   const LS_ACTIVE = 'ia.active.v1';
   const LS_SETTINGS = 'ia.settings.v1';
 
@@ -66,6 +69,7 @@
   }
 
   try {
+    memory = JSON.parse(localStorage.getItem(LS_MEMORY) || '[]') || [];
     conversations = JSON.parse(localStorage.getItem(LS_CONVS) || '[]') || [];
   } catch {
     conversations = [];
