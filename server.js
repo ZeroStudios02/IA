@@ -53,6 +53,11 @@ const OPENROUTER_MODELS = [
 const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
 const GITHUB_MODEL = process.env.GITHUB_MODEL || 'openai/gpt-4o-mini';
 
+// Si el motor principal falla (cuota agotada, caída...) se salta durante unos minutos
+// para no perder tiempo en cada mensaje; el de reserva responde al instante.
+let motorPrincipalHasta = 0;
+const MOTOR_CAIDO_MIN = 10;
+
 // Motor de IA: 'openrouter' | 'gemini' | 'github' | 'pollinations' (gratuito) | 'demo'
 // Si no se define AI_PROVIDER, se usa el primero que tenga clave disponible.
 const PROVIDER = (
@@ -724,7 +729,7 @@ const modelId =
   };
 
   /* ------------------------------ OPENROUTER ------------------------------ */
-  if (PROVIDER === 'openrouter') {
+  const runOpenRouter = async () => {
     try {
       const chatMessages = [{ role: 'system', content: systemText }];
       for (const c of contents) {
@@ -817,7 +822,7 @@ const modelId =
         send({ delta: token });
         await sleep(10);
       }
-      return finish();
+      return true;
     } catch (err) {
       const aborted = err?.name === 'AbortError';
       if (aborted) {
@@ -825,27 +830,27 @@ const modelId =
         return finish();
       }
       console.error('OpenRouter:', err?.message || err);
+      motorPrincipalHasta = Date.now() + MOTOR_CAIDO_MIN * 60_000;
+      console.warn(`OpenRouter marcado como caído ${MOTOR_CAIDO_MIN} min; uso el motor de reserva.`);
 
-      // Motor de reserva automático: nunca dejar a la persona sin respuesta
-      send({ note: 'reserva' });
-      const ok = await runPollinations();
-      if (ok) return finish();
-
-      const fallback =
-        '⚠️ Los motores gratuitos están saturados ahora mismo.\n\n' +
-        'Inténtalo de nuevo en unos segundos: suele durar poco.';
-      for (const token of fallback.split(/(?=\s)/)) {
-        if (res.writableEnded) break;
-        send({ delta: token });
-        await sleep(10);
-      }
-      return finish();
+      return false;
     }
-  }
+  };
 
   /* ---------------------- MOTOR GRATUITO (SIN CLAVE) --------------------- */
-  if (PROVIDER === 'pollinations') {
+  // Cadena de motores: principal → reserva → el otro, si no se ha probado
+  if (PROVIDER === 'openrouter' && Date.now() >= motorPrincipalHasta) {
+    if (await runOpenRouter()) return finish();
+  }
+
+  if (PROVIDER !== 'gemini') {
     const ok = await runPollinations();
+
+    // Si el de reserva también falla, probamos el otro motor (si no se ha intentado)
+    if (!ok && PROVIDER !== 'openrouter' && Date.now() >= motorPrincipalHasta) {
+      if (await runOpenRouter()) return finish();
+    }
+
     if (ok) return finish();
 
     // Modo de reserva: la web nunca se queda sin respuesta
