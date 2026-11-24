@@ -339,12 +339,24 @@ app.post('/api/image', rateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Describe la imagen que quieres generar.' });
   }
 
+  // Resolución alta: cuadrada, apaisada o vertical
   const ratio =
-    req.body?.ratio === 'wide' ? [1280, 720] : req.body?.ratio === 'tall' ? [720, 1280] : [1024, 1024];
+    req.body?.ratio === 'wide'
+      ? [1536, 864]
+      : req.body?.ratio === 'tall'
+        ? [864, 1536]
+        : [1280, 1280];
+  // El modelo responde mejor si la petición lleva palabras de calidad;
+  // se añaden solo si la persona ya no las puso.
+  const MARCADORES = /detallad|realista|realism|calidad|alta resolucion|alta resolución|4k|8k|fotorreal|nitid|nítid|profesional|cinematograf|cinematográf/i;
+  const promptFinal = MARCADORES.test(prompt)
+    ? prompt
+    : `${prompt}, altamente detallado, enfoque nítido, iluminación profesional, fotografía de alta calidad`;
+
   const seed = Math.floor(Math.random() * 1_000_000);
   const url =
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-    `?width=${ratio[0]}&height=${ratio[1]}&nologo=true&model=flux&seed=${seed}&enhance=true`;
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(promptFinal)}` +
+    `?width=${ratio[0]}&height=${ratio[1]}&nologo=true&model=flux&seed=${seed}&enhance=true&safe=false`;
 
   try {
     const upstream = await fetch(url, { signal: AbortSignal.timeout(120_000) });

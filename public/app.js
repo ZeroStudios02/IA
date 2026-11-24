@@ -351,31 +351,133 @@
       );
     });
 
+    const label = $('#convLabel');
+    if (label) label.textContent = convFilter ? 'Resultados' : 'Recientes';
+    if (label) label.hidden = filtered.length === 0;
+
     if (!filtered.length) {
       const empty = document.createElement('p');
       empty.className = 'empty-list';
       empty.textContent = conversations.length
         ? `Sin resultados para “${convFilter}”.`
-        : 'Aún no hay conversaciones. ¡Empieza una nueva!';
+        : 'Aún no hay conversaciones.\nEmpieza una nueva y aparecerá aquí.';
       list.appendChild(empty);
       return;
     }
 
     for (const conv of filtered) {
-      const item = document.createElement('button');
-      item.type = 'button';
+      const item = document.createElement('div');
       item.className = 'conv-item' + (conv.id === activeId ? ' active' : '');
-      item.innerHTML = `${ICON_CHAT}<span class="conv-title"></span><span class="conv-del" title="Eliminar conversación">${ICON_TRASH}</span>`;
-      item.querySelector('.conv-title').textContent = conv.title || 'Nueva conversación';
-      item.addEventListener('click', (event) => {
-        if (event.target.closest('.conv-del')) {
-          deleteConv(conv.id);
-        } else {
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'conv-open';
+      open.innerHTML = `<span class="conv-ico" aria-hidden="true">${ICON_CHAT}</span><span class="conv-title"></span>`;
+      open.querySelector('.conv-title').textContent = conv.title || 'Nueva conversación';
+      open.title = conv.title || 'Nueva conversación';
+      open.addEventListener('click', () => switchConv(conv.id));
+
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'conv-more';
+      more.title = 'Más opciones';
+      more.setAttribute('aria-label', 'Opciones de la conversación');
+      more.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>';
+      more.addEventListener('click', (event) => {
+        event.stopPropagation();
+        abrirMenuConv(event.currentTarget, conv);
+      });
+
+      item.appendChild(open);
+      item.appendChild(more);
+
+      item.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
           switchConv(conv.id);
         }
       });
+
       list.appendChild(item);
     }
+  }
+
+  // Menú contextual de una conversación (renombrar / eliminar)
+  let menuAbierto = null;
+  function cerrarMenuConv() {
+    if (menuAbierto) {
+      menuAbierto.remove();
+      menuAbierto = null;
+    }
+  }
+
+  function abrirMenuConv(ancla, conv) {
+    cerrarMenuConv();
+
+    const menu = document.createElement('div');
+    menu.className = 'conv-menu';
+    menu.setAttribute('role', 'menu');
+
+    const opcion = (texto, accion, peligro = false) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'conv-menu-item' + (peligro ? ' danger' : '');
+      b.setAttribute('role', 'menuitem');
+      b.textContent = texto;
+      b.addEventListener('click', () => {
+        cerrarMenuConv();
+        accion();
+      });
+      menu.appendChild(b);
+    };
+
+    opcion('Cambiar nombre', () => {
+      const actual = conv.title || 'Nueva conversación';
+      const nuevo = window.prompt('Nombre de la conversación:', actual);
+      if (nuevo === null) return;
+      const limpio = nuevo.trim().slice(0, 80);
+      if (!limpio) return;
+      conv.title = limpio;
+      save();
+      renderSidebar();
+      updateTitle();
+    });
+
+    opcion('Eliminar', () => {
+      if (window.confirm(`¿Eliminar “${conv.title || 'Nueva conversación'}”?`)) {
+        deleteConv(conv.id);
+      }
+    }, true);
+
+    document.body.appendChild(menu);
+
+    const rect = ancla.getBoundingClientRect();
+    const anchoMenu = menu.offsetWidth;
+    let left = rect.right - anchoMenu;
+    left = Math.max(8, Math.min(left, window.innerWidth - anchoMenu - 8));
+    let top = rect.bottom + 6;
+    const altoMenu = menu.offsetHeight;
+    if (top + altoMenu > window.innerHeight - 8) top = rect.top - altoMenu - 6;
+    menu.style.left = left + 'px';
+    menu.style.top = Math.max(8, top) + 'px';
+
+    menuAbierto = menu;
+
+    // cerrar al hacer clic fuera o al desplazar
+    setTimeout(() => {
+      const fuera = (e) => {
+        if (!menu.contains(e.target)) cerrarMenuConv();
+      };
+      const scroll = () => cerrarMenuConv();
+      document.addEventListener('pointerdown', fuera, { once: true });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') cerrarMenuConv();
+      }, { once: true });
+      window.addEventListener('scroll', scroll, { once: true, passive: true });
+    }, 0);
   }
 
   function applyBranding() {
@@ -676,13 +778,16 @@
         const img = new Image();
         img.onerror = reject;
         img.onload = () => {
-          const max = 1024;
+          const max = 1600; // más resolución para que el modelo vea los detalles
           const scale = Math.min(1, max / Math.max(img.width, img.height));
           const canvas = document.createElement('canvas');
           canvas.width = Math.round(img.width * scale);
           canvas.height = Math.round(img.height * scale);
-          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL('image/jpeg', 0.82));
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.92));
         };
         img.src = reader.result;
       };
@@ -721,6 +826,45 @@
     renderAttachments();
     const inputEl = $('#input');
     if (inputEl) inputEl.focus();
+  }
+
+  /* ---------------------------- Visor de imágenes ---------------------------- */
+
+  function abrirVisor(src, alt) {
+    const existente = document.querySelector('.image-viewer');
+    if (existente) existente.remove();
+
+    const viewer = document.createElement('div');
+    viewer.className = 'image-viewer';
+    viewer.setAttribute('role', 'dialog');
+    viewer.setAttribute('aria-label', 'Ver imagen');
+    viewer.innerHTML = `
+      <button class="viewer-close" type="button" aria-label="Cerrar">✕</button>
+      <img src="${src}" alt="${alt || 'Imagen'}">
+      <div class="viewer-actions">
+        <button class="viewer-btn" type="button" data-descargar>⬇ Descargar</button>
+      </div>`;
+
+    const cerrar = () => viewer.remove();
+    viewer.addEventListener('click', (e) => {
+      if (e.target === viewer) cerrar();
+    });
+    viewer.querySelector('.viewer-close').addEventListener('click', cerrar);
+    viewer.querySelector('[data-descargar]').addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = src;
+      a.download = 'arena-imagen.jpg';
+      a.click();
+    });
+
+    document.body.appendChild(viewer);
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key === 'Escape') cerrar();
+      },
+      { once: true }
+    );
   }
 
   /* ------------------------------- Memoria ------------------------------- */
