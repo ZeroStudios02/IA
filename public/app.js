@@ -717,11 +717,27 @@
 
   /* ------------------------- Generación de imágenes ------------------------- */
 
-  const IMG_RE =
-    /\b(genera|generar|crea|crear|dibuja|dibujar|hazme|haz|píntame|pintame|diseña|disena)\s+(?:una\s+|un\s+|el\s+|la\s+)?(imagen|foto|fotografia|fotografía|dibujo|ilustracion|ilustración|logo|portada|fondo|wallpaper|paisaje|personaje)\b/i;
+  // Verbos y sustantivos que indican que la persona quiere una imagen
+  const IMG_VERB =
+    /\b(genera|generar|generame|genérame|crea|crear|creame|créame|hazme|haz|diseña|disena|diseñar)\b/i;
+  const IMG_NOUN =
+    /\b(imagen|imagenes|imágenes|foto|fotos|fotografia|fotografía|dibujo|dibujos|ilustracion|ilustración|logo|portada|fondo|wallpaper|paisaje|personaje|meme|avatar|icono|miniatura|banner|collage)\b/i;
+  // "dibuja/pinta X" ya implica imagen, aunque no diga la palabra imagen
+  const DRAW_VERB = /\b(dibuja|dibujar|dibujame|dibújame|pinta|pintame|píntame)\b/i;
+  // "quiero/necesito ... una imagen de ..."
+  const IMG_WISH =
+    /\b(quiero|necesito|me\s+haces|me\s+haria|me\s+harías|me\s+puedes\s+hacer|podrias|podrías|puedes\s+hacer)\b.{0,25}\b(imagen|foto|dibujo|ilustracion|ilustración|logo|portada)\b/i;
+  // Frases que NO son una petición de imagen
+  const IMG_NEGATIVE =
+    /\b(describ\w+|analiza|analizar|explica|explicar|que\s+es|qué\s+es|significa|compara)\b/i;
 
   function wantsImage(text) {
-    return IMG_RE.test(text) && !/\b(imagen|foto)\b.*\b(analizar|describir|explicar)\b/i.test(text);
+    if (!text) return false;
+    if (IMG_NEGATIVE.test(text)) return false;
+    if (DRAW_VERB.test(text)) return true;
+    if (IMG_VERB.test(text) && IMG_NOUN.test(text)) return true;
+    if (IMG_WISH.test(text)) return true;
+    return false;
   }
 
   // Cooldown del generador gratuito (1 imagen cada 45 s)
