@@ -24,10 +24,13 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const BASE_URL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/models').replace(/\/+$/, '');
 
+const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim();
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+
 // Motor de IA: 'gemini' (con clave), 'pollinations' (gratuito, sin clave) o 'demo'
 const PROVIDER = (
   process.env.AI_PROVIDER ||
-  (API_KEY ? 'gemini' : GITHUB_TOKEN ? 'github' : 'demo')
+  (API_KEY ? 'gemini' : GITHUB_TOKEN ? 'github' : OPENROUTER_API_KEY ? 'openrouter' : 'demo')
 ).toLowerCase();
 const FREE_AI_URL = process.env.FREE_AI_URL || 'https://text.pollinations.ai/';
 const FREE_AI_MODEL = process.env.FREE_AI_MODEL || 'openai';
@@ -36,6 +39,7 @@ const FREE_AI_KEY = (process.env.FREE_AI_KEY || '').trim();
 // GitHub Models (gratis con tu token de GitHub)
 const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
 const GITHUB_MODEL = process.env.GITHUB_MODEL || 'openai/gpt-4o-mini';
+
 const DEMO = PROVIDER === 'demo';
 
 const SYSTEM_PROMPT =
@@ -89,7 +93,13 @@ app.get('/api/health', (req, res) => {
     ok: true,
     mode: PROVIDER,
     model:
-      PROVIDER === 'gemini' ? MODEL : PROVIDER === 'github' ? GITHUB_MODEL : FREE_AI_MODEL,
+      PROVIDER === 'gemini'
+        ? MODEL
+        : PROVIDER === 'github'
+          ? GITHUB_MODEL
+          : PROVIDER === 'openrouter'
+            ? OPENROUTER_MODEL
+            : FREE_AI_MODEL,
     models: AVAILABLE_MODELS,
   });
 });
@@ -485,6 +495,93 @@ app.post('/api/chat', rateLimit, async (req, res) => {
     }
   }
 
+  /* ------------------------------ OPENROUTER ------------------------------ */
+  if (PROVIDER === 'openrouter') {
+    try {
+      const chatMessages = [{ role: 'system', content: systemText }];
+      for (const c of contents) {
+        chatMessages.push({
+          role: c.role === 'model' ? 'assistant' : 'user',
+          content: c.parts[0].text,
+        });
+      }
+
+      const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://ia-w0xt.onrender.com',
+          'X-Title': 'Arena',
+        },
+        body: JSON.stringify({ model: OPENROUTER_MODEL, messages: chatMessages, stream: true }),
+        signal: controller.signal,
+      });
+
+      if (!upstream.ok) throw new Error(`HTTP ${upstream.status} de OpenRouter`);
+
+      const contentType = upstream.headers.get('content-type') || '';
+
+      if (contentType.includes('text/event-stream') && upstream.body) {
+        const reader = upstream.body.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sseBuffer += decoder.decode(value, { stream: true });
+
+          let newline;
+          while ((newline = sseBuffer.indexOf('\n')) !== -1) {
+            const line = sseBuffer.slice(0, newline).trim();
+            sseBuffer = sseBuffer.slice(newline + 1);
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+
+            try {
+              const json = JSON.parse(payload);
+              const delta = json?.choices?.[0]?.delta?.content;
+              if (delta) send({ delta });
+            } catch {
+              /* fragmento no JSON */
+            }
+          }
+        }
+        return finish();
+      }
+
+      if (!contentType.includes('application/json')) {
+        throw new Error('Respuesta inesperada de OpenRouter');
+      }
+
+      const text = (await upstream.text()).trim();
+      if (!text) throw new Error('OpenRouter devolvió una respuesta vacía.');
+      for (const token of text.split(/(?=\s)/)) {
+        if (res.writableEnded) break;
+        send({ delta: token });
+        await sleep(10);
+      }
+      return finish();
+    } catch (err) {
+      const aborted = err?.name === 'AbortError';
+      if (aborted) {
+        send({ error: 'Generación cancelada.' });
+        return finish();
+      }
+      const fallback =
+        '⚠️ OpenRouter no está disponible ahora mismo (límite temporal del modelo gratuito).\n\n' +
+        'Inténtalo de nuevo en unos segundos. Si el problema continúa, podemos cambiar a otro modelo.';
+      for (const token of fallback.split(/(?=\s)/)) {
+        if (res.writableEnded) break;
+        send({ delta: token });
+        await sleep(10);
+      }
+      return finish();
+    }
+  }
+
   /* ---------------------- MOTOR GRATUITO (SIN CLAVE) --------------------- */
   if (PROVIDER === 'pollinations') {
     try {
@@ -675,9 +772,11 @@ app.listen(PORT, '0.0.0.0', () => {
       ? `Gemini (${MODEL})`
       : PROVIDER === 'github'
         ? `GitHub Models (${GITHUB_MODEL})`
-        : PROVIDER === 'pollinations'
-          ? `gratuito (${FREE_AI_MODEL})`
-          : 'DEMO (sin clave)';
+        : PROVIDER === 'openrouter'
+          ? `OpenRouter (${OPENROUTER_MODEL})`
+          : PROVIDER === 'pollinations'
+            ? `gratuito (${FREE_AI_MODEL})`
+            : 'DEMO (sin clave)';
   console.log(`✅ IA escuchando en http://0.0.0.0:${PORT}`);
   console.log(`   Motor: ${motorLabel}`);
 });
