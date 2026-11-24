@@ -27,7 +27,12 @@ const BASE_URL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.goo
 const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim();
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
-// Motor de IA: 'gemini' (con clave), 'pollinations' (gratuito, sin clave) o 'demo'
+// GitHub Models (gratis con tu token de GitHub)
+const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
+const GITHUB_MODEL = process.env.GITHUB_MODEL || 'openai/gpt-4o-mini';
+
+// Motor de IA: 'openrouter' | 'gemini' | 'github' | 'pollinations' (gratuito) | 'demo'
+// Si no se define AI_PROVIDER, se usa el primero que tenga clave disponible.
 const PROVIDER = (
   process.env.AI_PROVIDER ||
   (API_KEY ? 'gemini' : GITHUB_TOKEN ? 'github' : OPENROUTER_API_KEY ? 'openrouter' : 'demo')
@@ -35,10 +40,6 @@ const PROVIDER = (
 const FREE_AI_URL = process.env.FREE_AI_URL || 'https://text.pollinations.ai/';
 const FREE_AI_MODEL = process.env.FREE_AI_MODEL || 'openai';
 const FREE_AI_KEY = (process.env.FREE_AI_KEY || '').trim();
-
-// GitHub Models (gratis con tu token de GitHub)
-const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
-const GITHUB_MODEL = process.env.GITHUB_MODEL || 'openai/gpt-4o-mini';
 
 const DEMO = PROVIDER === 'demo';
 
