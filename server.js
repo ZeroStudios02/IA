@@ -94,7 +94,20 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '12mb' }));
-app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], maxAge: '1h' }));
+// Sin caché para HTML/JS/CSS: los cambios se ven al instante al recargar
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    extensions: ['html'],
+    etag: true,
+    setHeaders(res, filePath) {
+      if (/\.(html|js|css)$/i.test(filePath)) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+      }
+    },
+  })
+);
 
 /* Rate limit sencillo en memoria (por IP) */
 const buckets = new Map();
