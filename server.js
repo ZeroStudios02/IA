@@ -339,13 +339,13 @@ app.post('/api/image', rateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Describe la imagen que quieres generar.' });
   }
 
-  // Resolución alta: cuadrada, apaisada o vertical
+  // Tamaño que el servicio gratuito sirve de verdad (pide más y responde 503)
   const ratio =
     req.body?.ratio === 'wide'
-      ? [1536, 864]
+      ? [1024, 576]
       : req.body?.ratio === 'tall'
-        ? [864, 1536]
-        : [1280, 1280];
+        ? [576, 1024]
+        : [1024, 1024];
   // El modelo responde mejor si la petición lleva palabras de calidad;
   // se añaden solo si la persona ya no las puso.
   const MARCADORES = /detallad|realista|realism|calidad|alta resolucion|alta resolución|4k|8k|fotorreal|nitid|nítid|profesional|cinematograf|cinematográf/i;
@@ -359,7 +359,13 @@ app.post('/api/image', rateLimit, async (req, res) => {
     `?width=${ratio[0]}&height=${ratio[1]}&nologo=true&model=flux&seed=${seed}&enhance=true&safe=false`;
 
   try {
-    const upstream = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+    let upstream = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+
+    // El servicio avisa "retry after 10s" cuando está saturado
+    if (upstream.status === 503) {
+      await new Promise((r) => setTimeout(r, 11_000));
+      upstream = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+    }
 
     // Límite del servicio gratuito: 1 imagen cada 45 s por IP
     if (upstream.status === 402 || upstream.status === 429) {
