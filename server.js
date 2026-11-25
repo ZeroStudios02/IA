@@ -698,51 +698,28 @@ const modelId =
 
       if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
 
-      const reader = upstream.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let textoPendiente = '';
-      let ultimoEnvio = Date.now();
-      const LOTE_MIN = 12;      // min. caracteres antes de enviar
-      const LOTE_MS = 60;       // max. ms sin enviar
-
-      const enviarLote = (forzar = false) => {
-        if (!textoPendiente) return;
-        if (!forzar && textoPendiente.length < LOTE_MIN && Date.now() - ultimoEnvio < LOTE_MS) {
-          return;
-        }
-        send({ delta: textoPendiente });
-        textoPendiente = '';
-        ultimoEnvio = Date.now();
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let corte;
-        while ((corte = buffer.indexOf('\n')) !== -1) {
-          const linea = buffer.slice(0, corte).trim();
-          buffer = buffer.slice(corte + 1);
-          if (!linea.startsWith('data:')) continue;
-          const payload = linea.slice(5).trim();
-          if (!payload || payload === '[DONE]') continue;
-
-          try {
-            const json = JSON.parse(payload);
-            const delta = json?.choices?.[0]?.delta?.content;
-            if (delta) {
-              textoPendiente += delta;
-              if (textoPendiente.length >= LOTE_MIN) enviarLote();
-            }
-          } catch {
-            /* fragmento no JSON */
-          }
+      const textoCompleto = await upstream.text();
+      const trozos = textoCompleto.split('\n').flatMap(linea => {
+        if (!linea.startsWith('data:')) return [];
+        const payload = linea.slice(5).trim();
+        if (!payload || payload === '[DONE]') return [];
+        try {
+          const d = JSON.parse(payload);
+          const c = d?.choices?.[0]?.delta?.content;
+          return c ? [c] : [];
+        } catch { return []; }
+      });
+      let acumulado = '';
+      for (const trozo of trozos) {
+        if (res.writableEnded) break;
+        acumulado += trozo;
+        if (acumulado.length >= 40) {
+          send({ delta: acumulado });
+          acumulado = '';
+          await sleep(8);
         }
       }
-
-      enviarLote(true); // lo que quede
+      if (acumulado) send({ delta: acumulado });
       return true;
     } catch (err) {
       if (err?.name === 'AbortError' || err?.name === 'TimeoutError') {
