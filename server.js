@@ -693,7 +693,7 @@ const modelId =
           messages: chatMessages,
           stream: true,
         }),
-        signal: controller.signal,
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
       });
 
       if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
@@ -726,9 +726,18 @@ const modelId =
       }
       return true;
     } catch (err) {
-      if (err?.name === 'AbortError') {
-        send({ error: 'Generación cancelada.' });
-        return true;
+      if (err?.name === 'AbortError' || err?.name === 'TimeoutError') {
+        console.warn('OpenAI tardó demasiado (15s); paso al motor de reserva.');
+        const ok = await runPollinations();
+        if (ok) return finish();
+        const fallback =
+          '⚠️ Los motores están lentos ahora mismo. Inténtalo de nuevo en un momento.';
+        for (const token of fallback.split(/(?=\s)/)) {
+          if (res.writableEnded) break;
+          send({ delta: token });
+          await sleep(10);
+        }
+        return finish();
       }
       console.error('OpenAI:', err?.message || err);
       return false;
