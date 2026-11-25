@@ -701,6 +701,20 @@ const modelId =
       const reader = upstream.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let textoPendiente = '';
+      let ultimoEnvio = Date.now();
+      const LOTE_MIN = 12;      // min. caracteres antes de enviar
+      const LOTE_MS = 60;       // max. ms sin enviar
+
+      const enviarLote = (forzar = false) => {
+        if (!textoPendiente) return;
+        if (!forzar && textoPendiente.length < LOTE_MIN && Date.now() - ultimoEnvio < LOTE_MS) {
+          return;
+        }
+        send({ delta: textoPendiente });
+        textoPendiente = '';
+        ultimoEnvio = Date.now();
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -718,12 +732,17 @@ const modelId =
           try {
             const json = JSON.parse(payload);
             const delta = json?.choices?.[0]?.delta?.content;
-            if (delta) send({ delta });
+            if (delta) {
+              textoPendiente += delta;
+              if (textoPendiente.length >= LOTE_MIN) enviarLote();
+            }
           } catch {
             /* fragmento no JSON */
           }
         }
       }
+
+      enviarLote(true); // lo que quede
       return true;
     } catch (err) {
       if (err?.name === 'AbortError' || err?.name === 'TimeoutError') {
